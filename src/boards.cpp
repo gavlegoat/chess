@@ -9,6 +9,73 @@ Position::Position() {
   }
 }
 
+Position::Position(std::string fen) {
+  for (int i = 0; i < NUM_BOARDS; i++) {
+    boards[i] = 0;
+  }
+  std::vector<std::string> ranks = split(fen, '/');
+  for (int i = 0; i < 8; i++) {
+    int j = 0;
+    int file = 0;
+    while (file < 8) {
+      int pos = (7 - i) * 8 + file;
+      switch (ranks[i][j]) {
+        case 'P':
+          place_piece(pos, W_PAWN);
+          file++;
+          break;
+        case 'N':
+          place_piece(pos, W_KNIGHT);
+          file++;
+          break;
+        case 'B':
+          place_piece(pos, W_BISHOP);
+          file++;
+          break;
+        case 'R':
+          place_piece(pos, W_ROOK);
+          file++;
+          break;
+        case 'K':
+          place_piece(pos, W_KING);
+          file++;
+          break;
+        case 'Q':
+          place_piece(pos, W_QUEEN);
+          file++;
+          break;
+        case 'p':
+          place_piece(pos, B_PAWN);
+          file++;
+          break;
+        case 'n':
+          place_piece(pos, B_KNIGHT);
+          file++;
+          break;
+        case 'b':
+          place_piece(pos, B_BISHOP);
+          file++;
+          break;
+        case 'r':
+          place_piece(pos, B_ROOK);
+          file++;
+          break;
+        case 'k':
+          place_piece(pos, B_KING);
+          file++;
+          break;
+        case 'q':
+          place_piece(pos, B_QUEEN);
+          file++;
+          break;
+        default:
+          file += ranks[i][j] - '0';
+      }
+      j++;
+    }
+  }
+}
+
 Position::Position(uint64_t bds[NUM_BOARDS]) {
   for (int i = 0; i < NUM_BOARDS; i++) {
     boards[i] = bds[i];
@@ -25,9 +92,9 @@ void Position::make_move(const Move& m) {
     int captured_square = to_square;
     if (m.capture_ep()) {
       if (piece == W_PAWN) {
-        captured_square += 8;
-      } else {
         captured_square -= 8;
+      } else {
+        captured_square += 8;
       }
     }
     // Clear the captured square on each board
@@ -90,8 +157,8 @@ void Position::make_move(const Move& m) {
 
 std::string Position::fen_board() const {
   std::string ret = "";
-  int empty_counter = 0;
   for (int i = 0; i < 8; i++) {
+    int empty_counter = 0;
     for (int j = 0; j < 8; j++) {
       int square = (7 - i) * 8 + j;
       bool empty = false;
@@ -107,7 +174,7 @@ std::string Position::fen_board() const {
       } else if (piece_at(square, W_QUEEN)) {
         code = 'Q';
       } else if (piece_at(square, W_KING)) {
-        code = 'K'
+        code = 'K';
       } else if (piece_at(square, B_PAWN)) {
         code = 'p';
       } else if (piece_at(square, B_KNIGHT)) {
@@ -119,9 +186,9 @@ std::string Position::fen_board() const {
       } else if (piece_at(square, B_QUEEN)) {
         code = 'q';
       } else if (piece_at(square, B_KING)) {
-        code = 'k'
+        code = 'k';
       } else {
-        empty = true
+        empty = true;
         empty_counter++;
       }
       if (!empty) {
@@ -129,12 +196,17 @@ std::string Position::fen_board() const {
           ret += std::to_string(empty_counter);
         }
         ret += std::string(1, code);
+        empty_counter = 0;
       }
     }
+    if (empty_counter > 0) {
+      ret += std::to_string(empty_counter);
+    }
     if (i < 7) {
-      ret += "/"
+      ret += "/";
     }
   }
+
   return ret;
 }
 
@@ -183,67 +255,7 @@ GameState::GameState(std::string fen) {
   }
   half_moves_since_reset = std::stoi(half_moves);
   repeats = std::map<Position, int>();
-
-  std::vector<std::string> ranks = split(board, '/');
-  position = Position();
-  for (int i = 0; i < 8; i++) {
-    int j = 0;
-    int file = 0;
-    int pos = (7 - i) * 8 + file;
-    switch (ranks[i][j]) {
-      case 'P':
-        position.place_piece(pos, Position::W_PAWN);
-        file++;
-        break;
-      case 'N':
-        position.place_piece(pos, Position::W_KNIGHT);
-        file++;
-        break;
-      case 'B':
-        position.place_piece(pos, Position::W_BISHOP);
-        file++;
-        break;
-      case 'R':
-        position.place_piece(pos, Position::W_ROOK);
-        file++;
-        break;
-      case 'K':
-        position.place_piece(pos, Position::W_KING);
-        file++;
-        break;
-      case 'Q':
-        position.place_piece(pos, Position::W_QUEEN);
-        file++;
-        break;
-      case 'p':
-        position.place_piece(pos, Position::B_PAWN);
-        file++;
-        break;
-      case 'n':
-        position.place_piece(pos, Position::B_KNIGHT);
-        file++;
-        break;
-      case 'b':
-        position.place_piece(pos, Position::B_BISHOP);
-        file++;
-        break;
-      case 'r':
-        position.place_piece(pos, Position::B_ROOK);
-        file++;
-        break;
-      case 'k':
-        position.place_piece(pos, Position::B_KING);
-        file++;
-        break;
-      case 'q':
-        position.place_piece(pos, Position::B_QUEEN);
-        file++;
-        break;
-      default:
-        file += ranks[i][j] - '0';
-    }
-    j++;
-  }
+  position = Position(board);
   moves = std::stoi(move_number);
 }
 

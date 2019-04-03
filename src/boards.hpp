@@ -15,6 +15,8 @@ class Move {
     int to_sq;
     int piece_moved;
     uint16_t flags;
+
+  public:
     static const uint16_t QUIET = 0;
     static const uint16_t PAWN_DOUBLE = 1;
     static const uint16_t KING_CASTLE = 2;
@@ -30,7 +32,6 @@ class Move {
     static const uint16_t PROMOTE_ROOK_CAPTURE = 14;
     static const uint16_t PROMOTE_QUEEN_CAPTURE = 15;
 
-  public:
     Move(int from, int to, int p, uint16_t fl);
 
     inline bool castle_kingside() const {
@@ -105,18 +106,19 @@ class Position {
     static const int B_KING   = 11;
 
     Position();
+    Position(std::string fen);
     Position(uint64_t bds[NUM_BOARDS]);
 
     // Put a piece on the board. For the moment this is trivial but it might
     // be useful to have this as a separate method if the board representation
     // gets more complicated.
     inline void place_piece(int pos, int piece) {
-      boards[piece] |= 1 << pos;
+      boards[piece] |= 1ull << pos;
     }
 
     // Remove a piece from the board
     inline void remove_piece(int pos, int piece) {
-      boards[piece] &= ~(1 << pos);
+      boards[piece] &= ~(1ull << pos);
     }
 
     // Make a move, updating the position
@@ -124,7 +126,7 @@ class Position {
 
     // Determine whether the given piece is at the given square
     inline bool piece_at(int square, int piece) const {
-      return (boards[piece] & (1 << square)) != 0;
+      return (boards[piece] & (1ull << square)) != 0;
     }
 
     std::string fen_board() const;
