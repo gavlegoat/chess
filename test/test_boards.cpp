@@ -167,10 +167,102 @@ SCENARIO("moves can be made on positions") {
   }
 }
 
-SCENARIO("we can make moves on a game state") {
-  // TODO
+TEST_CASE("a fen string can be generated from a game state") {
+  GameState gs;
+  CHECK(gs.fen_string() == "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+  Move m1(12, 28, Position::W_PAWN, Move::PAWN_DOUBLE);
+  gs.make_move(m1);
+  CHECK(gs.fen_string() == "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
+
+  Move m2(50, 34, Position::B_PAWN, Move::PAWN_DOUBLE);
+  gs.make_move(m2);
+  CHECK(gs.fen_string() == "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2");
+
+  Move m3(6, 21, Position::W_KNIGHT, Move::QUIET);
+  gs.make_move(m3);
+  CHECK(gs.fen_string() == "rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2");
 }
 
-TEST_CASE("a fen string can be generated from a game state") {
-  // TODO
+SCENARIO("we can make moves on a game state") {
+  // Since we already know that moves can be made on a position, here we only
+  // check for game state specific problems, like castling and checking for en
+  // passant possiblities.
+
+  GIVEN("a game state") {
+    Position p("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R");
+    GameState gs(p, true, true, true, true, true, 0, false, 0, 1,
+        std::map<Position, int>());
+
+    CHECK(gs.fen_string() == "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1");
+
+    WHEN("we castle kingside") {
+      Move m1(4, 2, Position::W_KING, Move::QUEEN_CASTLE);
+      Move m2(60, 58, Position::B_KING, Move::QUEEN_CASTLE);
+      gs.make_move(m1);
+      gs.make_move(m2);
+
+      THEN("castling rights are removed") {
+        CHECK(gs.fen_string() == "2kr3r/pppppppp/8/8/8/8/PPPPPPPP/2KR3R w - - 2 2");
+      }
+    }
+
+    WHEN("we castle queenside") {
+      Move m1(4, 6, Position::W_KING, Move::KING_CASTLE);
+      Move m2(60, 62, Position::B_KING, Move::KING_CASTLE);
+      gs.make_move(m1);
+      gs.make_move(m2);
+
+      THEN("castling rights are removed") {
+        CHECK(gs.fen_string() == "r4rk1/pppppppp/8/8/8/8/PPPPPPPP/R4RK1 w - - 2 2");
+      }
+    }
+
+    WHEN("we move a rook") {
+      Move m1(0, 1, Position::W_ROOK, Move::QUIET);
+      Move m2(63, 62, Position::B_ROOK, Move::QUIET);
+      gs.make_move(m1);
+      gs.make_move(m2);
+
+      THEN("castling rights are removed") {
+        CHECK(gs.fen_string() == "r3k1r1/pppppppp/8/8/8/8/PPPPPPPP/1R2K2R w Kq - 2 2");
+      }
+    }
+
+    WHEN("en passant becomes possible") {
+      Move m1(8, 24, Position::W_PAWN, Move::PAWN_DOUBLE);
+      Move m2(55, 39, Position::B_PAWN, Move::PAWN_DOUBLE);
+      Move m3(24, 32, Position::W_PAWN, Move::QUIET);
+      Move m4(39, 31, Position::B_PAWN, Move::QUIET);
+      Move m5(14, 30, Position::W_PAWN, Move::PAWN_DOUBLE);
+      gs.make_move(m1);
+      gs.make_move(m2);
+      gs.make_move(m3);
+      gs.make_move(m4);
+      gs.make_move(m5);
+
+      THEN("the game state permits en passant") {
+        CHECK(gs.fen_string() == "r3k2r/ppppppp1/8/P7/6Pp/8/1PPPPP1P/R3K2R b KQkq g3 0 3");
+      }
+    }
+
+    WHEN("the en passant capture isn't taken immediately") {
+      Move m1(8, 24, Position::W_PAWN, Move::PAWN_DOUBLE);
+      Move m2(55, 39, Position::B_PAWN, Move::PAWN_DOUBLE);
+      Move m3(24, 32, Position::W_PAWN, Move::QUIET);
+      Move m4(49, 33, Position::B_PAWN, Move::PAWN_DOUBLE);
+      Move m5(0, 1, Position::W_ROOK, Move::QUIET);
+      Move m6(39, 31, Position::B_PAWN, Move::QUIET);
+      gs.make_move(m1);
+      gs.make_move(m2);
+      gs.make_move(m3);
+      gs.make_move(m4);
+      gs.make_move(m5);
+      gs.make_move(m6);
+
+      THEN("the en passant opportunity goes away") {
+        CHECK(gs.fen_string() == "r3k2r/p1ppppp1/8/Pp6/7p/8/1PPPPPPP/1R2K2R w Kkq - 0 4");
+      }
+    }
+  }
 }

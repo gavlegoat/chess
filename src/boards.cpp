@@ -220,18 +220,11 @@ bool Position::operator<(const Position& other) const {
 }
 
 GameState::GameState() :
+  position(Position("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")),
   white_to_move(true), w_castle_k(true), w_castle_q(true), b_castle_k(true),
   b_castle_q(true), en_passant_square(0x0000000000000000),
   en_passant_possible(false), half_moves_since_reset(0), moves(1),
-  repeats(std::map<Position, int>()) {
-    uint64_t boards[NUM_BOARDS] = {0x000000000000FF00, 0x0000000000000042,
-                                   0x0000000000000024, 0x0000000000000081,
-                                   0x0000000000000010, 0x0000000000000080,
-                                   0x00FF000000000000, 0x4200000000000000,
-                                   0x2400000000000000, 0x8100000000000000,
-                                   0x1000000000000000, 0x0800000000000000};
-    position = Position(boards);
-}
+  repeats(std::map<Position, int>()) {}
 
 GameState::GameState(std::string fen) {
   std::vector<std::string> words = split(fen, ' ');
@@ -328,6 +321,8 @@ void GameState::make_move(const Move& m) {
     } else {
       en_passant_square = m.to_square() + 8;
     }
+  } else {
+    en_passant_possible = false;
   }
   // Update the 50-move counter
   if (m.double_pawn_push() || m.capture() ||
