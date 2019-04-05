@@ -2,9 +2,10 @@
 #define _BOARDS_H_
 
 #include <map>
+#include <set>
 #include <iostream>
 
-#define NUM_BOARDS 12
+#define NUM_BOARDS 15
 
 // A Move represents some move. This is characterized by the beginning and end
 // squares of the move along with a number of flags describing other conditions
@@ -90,6 +91,7 @@ class Move {
 class Position {
   private:
     uint64_t boards[NUM_BOARDS];
+    std::set<int> piece_sets[12];
 
   public:
     static const int W_PAWN   = 0;
@@ -104,21 +106,55 @@ class Position {
     static const int B_ROOK   = 9;
     static const int B_QUEEN  = 10;
     static const int B_KING   = 11;
+    static const int W_ALL    = 12;
+    static const int B_ALL    = 13;
+    static const int BOTH_ALL = 14;
+
+    static const int PAWN = 0;
+    static const int KNIGHT = 1;
+    static const int BISHOP = 2;
+    static const int ROOK = 3;
+    static const int QUEEN = 4;
+    static const int KING = 5;
 
     Position();
     Position(std::string fen);
-    Position(uint64_t bds[NUM_BOARDS]);
+
+    inline static bool piece_is_white(int piece) {
+      return piece <= 5;
+    }
+
+    inline static int color_piece(int piece, bool is_white) {
+      if (is_white) {
+        return piece;
+      } else {
+        return piece + 6;
+      }
+    }
 
     // Put a piece on the board. For the moment this is trivial but it might
     // be useful to have this as a separate method if the board representation
     // gets more complicated.
     inline void place_piece(int pos, int piece) {
-      boards[piece] |= 1ull << pos;
+      uint64_t mask = 1ull << pos;
+      boards[piece] |= mask;
+      boards[BOTH_ALL] |= mask;
+      if (piece_is_white(piece)) {
+        boards[W_ALL] |= mask;
+      } else {
+        boards[B_ALL] |= mask;
+      }
+      piece_sets[piece].insert(pos);
     }
 
     // Remove a piece from the board
     inline void remove_piece(int pos, int piece) {
-      boards[piece] &= ~(1ull << pos);
+      uint64_t mask = ~(1ull << pos);
+      boards[piece] &= mask;
+      boards[W_ALL] &= mask;
+      boards[B_ALL] &= mask;
+      boards[BOTH_ALL] &= mask;
+      piece_sets[piece].erase(pos);
     }
 
     // Make a move, updating the position
@@ -127,6 +163,14 @@ class Position {
     // Determine whether the given piece is at the given square
     inline bool piece_at(int square, int piece) const {
       return (boards[piece] & (1ull << square)) != 0;
+    }
+
+    inline const std::set<int>& find_piece(int piece) const {
+      return piece_sets[piece];
+    }
+
+    inline uint64_t get_board(int piece) const {
+      return boards[piece];
     }
 
     std::string fen_board() const;
@@ -167,6 +211,14 @@ class GameState {
     // Fully general constructor
     GameState(Position pos, bool wtm, bool wck, bool wcq, bool bck, bool bcq,
         uint64_t eps, bool epp, int msr, int ms, std::map<Position, int> rs);
+
+    inline bool whites_move() const {
+      return white_to_move;
+    }
+
+    inline const Position& pos() const {
+      return position;
+    }
 
     // Make a move
     void make_move(const Move& m);
