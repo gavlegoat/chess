@@ -100,13 +100,13 @@ class Position {
     static const int W_ROOK   = 3;
     static const int W_QUEEN  = 4;
     static const int W_KING   = 5;
-    static const int B_PAWN   = 6;
-    static const int B_KNIGHT = 7;
-    static const int B_BISHOP = 8;
-    static const int B_ROOK   = 9;
-    static const int B_QUEEN  = 10;
-    static const int B_KING   = 11;
-    static const int W_ALL    = 12;
+    static const int W_ALL    = 6;
+    static const int B_PAWN   = 7;
+    static const int B_KNIGHT = 8;
+    static const int B_BISHOP = 9;
+    static const int B_ROOK   = 10;
+    static const int B_QUEEN  = 11;
+    static const int B_KING   = 12;
     static const int B_ALL    = 13;
     static const int BOTH_ALL = 14;
 
@@ -116,12 +116,13 @@ class Position {
     static const int ROOK = 3;
     static const int QUEEN = 4;
     static const int KING = 5;
+    static const int ALL = 6;
 
     Position();
     Position(std::string fen);
 
     inline static bool piece_is_white(int piece) {
-      return piece <= 5;
+      return piece <= 6;
     }
 
     inline static int color_piece(int piece, bool is_white) {
@@ -218,6 +219,14 @@ class GameState {
 
     inline const Position& pos() const {
       return position;
+    }
+
+    inline bool en_passant() const {
+      return en_passant_possible;
+    }
+
+    inline int en_passant_target() const {
+      return en_passant_square;
     }
 
     // Make a move
