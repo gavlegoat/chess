@@ -76,12 +76,6 @@ Position::Position(std::string fen) {
   }
 }
 
-Position::Position(uint64_t bds[NUM_BOARDS]) {
-  for (int i = 0; i < NUM_BOARDS; i++) {
-    boards[i] = bds[i];
-  }
-}
-
 void Position::make_move(const Move& m) {
   int from_square = m.from_square();
   int to_square = m.to_square();
