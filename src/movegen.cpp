@@ -150,6 +150,34 @@ MoveList generate_king_moves(const GameState& gs) {
   return ret;
 }
 
+void append_castling_moves(const GameState& gs, MoveList& l) {
+  // TODO
+}
+
+void append_en_passant(const GameState& gs, MoveList& l) {
+  if (!gs.en_passant()) {
+    return;
+  }
+  int square = gs.en_passant_target();
+  bool white_to_move = gs.whites_move();
+  Position p = gs.pos();
+  if (white_to_move) {
+    if (p.piece_at(square - 9, our_pawn)) {
+      l.push_back(Move(square - 9, square, our_pawn, Move::CAPTURE_EP));
+    }
+    if (p.peice_at(square - 7, our_pawn)) {
+      l.push_back(Move(square - 7, square, our_pawn, Move::CAPTURE_EP));
+    }
+  } else {
+    if (p.piece_at(square + 9, our_pawn)) {
+      l.push_back(Move(square + 9, square, our_pawn, Move::CAPTURE_EP));
+    }
+    if (p.peice_at(square + 7, our_pawn)) {
+      l.push_back(Move(square + 7, square, our_pawn, Move::CAPTURE_EP));
+    }
+  }
+}
+
 // Generate the pseudo-legal moves in this position. We will need to filter out
 // moves that result in check later.
 MoveList generate_pseudolegal_moves(const GameState& gs) {
@@ -165,9 +193,10 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
   bool white_to_move = gs.whites_move();
   if (count < 1) {
     // We are not in check, so generate all moves
-    // TODO: Check for castling
-    // TODO: Check for en passant
-    // TODO: Generate all other moves
+    append_castling_moves(gs, ret);
+    append_en_passant(gs, ret);
+
+    // TODO: Generate all normal moves
 
     // For knights, bishops, rooks, and queens, the only restriction on moving is
     // if the piece is pinned

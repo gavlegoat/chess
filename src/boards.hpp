@@ -3,8 +3,7 @@
 
 #include <map>
 #include <set>
-#include <iostream>
-
+#include <iostream> 
 #define NUM_BOARDS 15
 
 // A Move represents some move. This is characterized by the beginning and end
