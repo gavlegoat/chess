@@ -129,7 +129,7 @@ class Position {
       if (is_white) {
         return piece;
       } else {
-        return piece + 6;
+        return piece + 7;
       }
     }
 
