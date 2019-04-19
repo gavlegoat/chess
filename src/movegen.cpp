@@ -37,9 +37,9 @@ Magic bishop_magics[64];
 // Generate a bitboard of all checking pieces
 uint64_t get_check_board(const GameState& gs) {
   bool white_to_move = gs.whites_move();
-  Positionp = gs.pos();
+  Position p = gs.pos();
   int king = Position::color_piece(Position::KING, white_to_move);
-  int king_sq = *find_piece[king].begin();
+  int king_sq = *p.find_piece(king).begin();
   int opp_knight = Position::color_piece(Position::KNIGHT, !white_to_move);
   int opp_bishop = Position::color_piece(Position::BISHOP, !white_to_move);
   int opp_rook = Position::color_piece(Position::ROOK, !white_to_move);
@@ -52,6 +52,7 @@ uint64_t get_check_board(const GameState& gs) {
   uint64_t occupancy = p.get_board(Position::BOTH_ALL);
   uint64_t bishop_attack = bm.attack_table[((occupancy & bm.mask) * bm.magic)
     >> (64 - bm.shift)];
+  Magic rm = rook_magics[king_sq];
   uint64_t rook_attack = rm.attack_table[((occupancy & rm.mask) & rm.magic)
     >> (64 - rm.shift)];
   uint64_t check_board = knight_moves[king_sq] & opp_knight;
@@ -126,9 +127,9 @@ void append_moves_from(int from_square, uint64_t to_squares,
     int tsq = lsb(to_squares);
     to_squares &= to_squares - 1;
     if (opp_pieces & ~(1ull << tsq) != 0) {
-      l.push_back(Move(from_square, tsq, piece, Move::CAPTURE);
+      l.push_back(Move(from_square, tsq, piece, Move::CAPTURE));
     } else {
-      l.push_back(Move(from_square, tsq, piece, Move::QUIET);
+      l.push_back(Move(from_square, tsq, piece, Move::QUIET));
     }
   }
 }
@@ -141,7 +142,7 @@ MoveList generate_king_moves(const GameState& gs) {
   int our_pieces = Position::color_piece(Position::ALL, white_to_move);
   int king_square = *p.find_piece(our_king).begin();
   uint64_t king_move_board = king_moves[king_square];
-  king_move_board &= ~pos.get_board(our_pieces);
+  king_move_board &= ~p.get_board(our_pieces);
   int opp_pieces = Position::color_piece(Position::ALL, !white_to_move);
   uint64_t opp_all_board = p.get_board(opp_pieces);
   MoveList ret;
@@ -215,7 +216,7 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
     int opp_pieces = Position::color_piece(Position::ALL, !white_to_move);
     // If the checking piece is a kngiht then the only legal target square is
     // the position of the checking piece, so there's nothing to do
-    if (!piece_at(checking_piece_sq, opp_knight)) {
+    if (!p.piece_at(checking_piece_sq, opp_knight)) {
       // Otherwise, the piece is a sliding attacker, so the legal squares
       // consist of the location of the attacking piece along with a line
       // connecting the attacking piece to our king. Note that the same applies
@@ -239,10 +240,10 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
       int square = lsb(legal_targets);
       legal_targets &= legal_targets - 1;
       uint64_t knights = knight_moves[square] & p.get_board(our_knight);
-      bool capture = p.get_board(opp_pieces & ~(1ull << square) != 0;
+      bool capture = p.get_board(opp_pieces & ~(1ull << square)) != 0;
       append_moves_to(knights, square, our_knight, capture, ret);
-      Magic rm = rook_magic[square];
-      Magic bm = bishop_magic[square];
+      Magic rm = rook_magics[square];
+      Magic bm = bishop_magics[square];
       uint64_t r_att = rm.attack_table[(occupancy * rm.magic) << (64 - rm.shift)];
       uint64_t b_att = bm.attack_table[(occupancy * bm.magic) << (64 - bm.shift)];
       uint64_t rooks = r_att & p.get_board(our_rook);
@@ -251,7 +252,7 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
       append_moves_to(rooks, square, our_rook, capture, ret);
       append_moves_to(bishops, square, our_bishop, capture, ret);
       append_moves_to(queens, square, our_queen, capture, ret);
-      std::set<int> pawn_squares = pos.find_piece(our_pawn);
+      std::set<int> pawn_squares = p.find_piece(our_pawn);
       bool promote = white_to_move ? square / 8 == 7 : square / 8 == 0;
       for (int pawn : pawn_squares) {
         if (capture) {
@@ -266,10 +267,10 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
               ret.push_back(Move(pawn, square, our_pawn, Move::CAPTURE));
             }
           } else if (gs.en_passant() &&
-                     (( white_to_move && gs.en_passant_square() == square + 8) ||
-                      (!white_to_move && gs.en_passant_square() == square - 8)) &&
+                     (( white_to_move && gs.en_passant_target() == square + 8) ||
+                      (!white_to_move && gs.en_passant_target() == square - 8)) &&
                      (pawn == square - 1 || pawn == square + 1)) {
-            ret.push_back(Move(pawn, gs.en_passant_square(), our_pawn, Move::CAPTURE_EP));
+            ret.push_back(Move(pawn, gs.en_passant_target(), our_pawn, Move::CAPTURE_EP));
           }
         } else {
           if (( white_to_move && pawn == square - 8) ||
@@ -285,7 +286,7 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
           } else if (( white_to_move && pawn / 8 == 1 && pawn == square - 16) ||
                      (!white_to_move && pawn / 8 == 6 && pawn == square + 16)) {
             ret.push_back(Move(pawn, square, our_pawn, Move::PAWN_DOUBLE));
-          } else if (gs.en_passant() && gs.en_passant_square() == square &&
+          } else if (gs.en_passant() && gs.en_passant_target() == square &&
                      (( white_to_move && (pawn == square - 7 || pawn == square - 9)) ||
                       (!white_to_move && (pawn == square + 7 || pawn == square + 9)))) {
             ret.push_back(Move(pawn, square, our_pawn, Move::CAPTURE_EP));
@@ -502,10 +503,10 @@ uint64_t generate_attack(int sq, uint64_t occupancy, bool is_rook) {
 Magic generate_magic(int square, int shift, bool is_rook) {
   uint64_t occupancy = generate_occupancy_mask(square, is_rook);
   std::vector<uint64_t> occupancies = generate_possible_occupancies(square,
-      occupancy, is_rook, 0, 0);
+      occupancy, 0, 0);
   std::vector<uint64_t> attacks;
   for (int i = 0; i < occupancies.size(); i++) {
-    attacks.push_back(generate_attack(sq, occupancies[i], is_rook));
+    attacks.push_back(generate_attack(square, occupancies[i], is_rook));
   }
 
   // table will be the attack table of the generated Magic object
