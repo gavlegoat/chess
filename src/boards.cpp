@@ -216,7 +216,7 @@ bool Position::operator<(const Position& other) const {
 GameState::GameState() :
   position(Position("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")),
   white_to_move(true), w_castle_k(true), w_castle_q(true), b_castle_k(true),
-  b_castle_q(true), en_passant_square(0x0000000000000000),
+  b_castle_q(true), en_passant_square(0x0000000000000000ull),
   en_passant_possible(false), half_moves_since_reset(0), moves(1),
   repeats(std::map<Position, int>()) {}
 

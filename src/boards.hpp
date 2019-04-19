@@ -228,6 +228,28 @@ class GameState {
       return en_passant_square;
     }
 
+    // Get a bitboard of squares we need to look at for checks when castling.
+    // Returns 0 if castling flags are false. Notice that the squares do not
+    // include the square the king is currently on since we look for checks
+    // before looking for castling moves.
+    inline uint64_t castle_through_kingside() const {
+      if (white_to_move && w_castle_k) {
+        return (1ull << 5) | (1ull << 6);
+      } else if (!white_to_move && b_castle_k) {
+        return (1ull << 61) | (1ull << 62);
+      }
+      return 0;
+    }
+
+    inline uint64_t castle_through_queenside() const {
+      if (white_to_move && w_castle_q) {
+        return (1ull << 2) | (1ull << 3);
+      } else if (!white_to_move && b_castle_q) {
+        return (1ull << 58) | (1ull << 59);
+      }
+      return 0;
+    }
+
     // Make a move
     void make_move(const Move& m);
 

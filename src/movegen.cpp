@@ -34,12 +34,13 @@ uint64_t king_moves[64];
 Magic rook_magics[64];
 Magic bishop_magics[64];
 
-// Generate a bitboard of all checking pieces
-uint64_t get_check_board(const GameState& gs) {
-  bool white_to_move = gs.whites_move();
-  Position p = gs.pos();
-  int king = Position::color_piece(Position::KING, white_to_move);
-  int king_sq = *p.find_piece(king).begin();
+// Get a board representing all of the pieces which can move to the given
+// target. Note that this move only considers moves which end with a piece
+// on the target square. In particular, if there is a pawn on the target
+// square which can be taken en passant, the capturing pawn will not be
+// indicated on the returned board.
+uint64_t get_attacks_to(const Position& p, int target, bool white_to_move,
+    uint64_t occupancy) {
   int opp_knight = Position::color_piece(Position::KNIGHT, !white_to_move);
   int opp_bishop = Position::color_piece(Position::BISHOP, !white_to_move);
   int opp_rook = Position::color_piece(Position::ROOK, !white_to_move);
@@ -48,43 +49,52 @@ uint64_t get_check_board(const GameState& gs) {
   uint64_t bishop_board = p.get_board(opp_bishop);
   uint64_t rook_board = p.get_board(opp_rook);
   uint64_t queen_board = p.get_board(opp_queen);
-  Magic bm = bishop_magics[king_sq];
-  uint64_t occupancy = p.get_board(Position::BOTH_ALL);
+  Magic bm = bishop_magics[target];
   uint64_t bishop_attack = bm.attack_table[((occupancy & bm.mask) * bm.magic)
     >> (64 - bm.shift)];
-  Magic rm = rook_magics[king_sq];
+  Magic rm = rook_magics[target];
   uint64_t rook_attack = rm.attack_table[((occupancy & rm.mask) & rm.magic)
     >> (64 - rm.shift)];
-  uint64_t check_board = knight_moves[king_sq] & opp_knight;
+  uint64_t check_board = knight_moves[target] & opp_knight;
   check_board |= bishop_attack & (bishop_board | queen_board);
   check_board |= rook_attack & (rook_board | queen_board);
 
   int opp_pawn = Position::color_piece(Position::PAWN, !white_to_move);
-  int krank = king_sq / 8;
-  int kfile = king_sq % 8;
+  int krank = target / 8;
+  int kfile = target % 8;
   if (kfile < 7) {
     if (white_to_move && krank < 7) {
-      if (p.piece_at(king_sq + 9, opp_pawn)) {
-        check_board |= 1ull << (king_sq + 9);
+      if (p.piece_at(target + 9, opp_pawn)) {
+        check_board |= 1ull << (target + 9);
       }
     } else if (krank > 0) {
-      if (p.piece_at(king_sq - 7, opp_pawn)) {
-        check_board |= 1ull << (king_sq - 7);
+      if (p.piece_at(target - 7, opp_pawn)) {
+        check_board |= 1ull << (target - 7);
       }
     }
   }
   if (kfile > 0) {
     if (white_to_move && krank < 7) {
-      if (p.piece_at(king_sq + 7, opp_pawn)) {
-        check_board |= 1ull << (king_sq + 7);
+      if (p.piece_at(target + 7, opp_pawn)) {
+        check_board |= 1ull << (target + 7);
       }
     } else if (krank > 0) {
-      if (p.piece_at(king_sq - 9, opp_pawn)) {
-        check_board |= 1ull << (king_sq - 9);
+      if (p.piece_at(target - 9, opp_pawn)) {
+        check_board |= 1ull << (target - 9);
       }
     }
   }
   return check_board;
+}
+
+// Generate a bitboard of all checking pieces
+uint64_t get_check_board(const GameState& gs) {
+  bool white_to_move = gs.whites_move();
+  const Position& p = gs.pos();
+  int king = Position::color_piece(Position::KING, white_to_move);
+  int king_sq = *p.find_piece(king).begin();
+  uint64_t occupancy = p.get_board(Position::BOTH_ALL);
+  return get_attacks_to(p, king_sq, white_to_move, occupancy);
 }
 
 // Count the number of 1 bits in a number
@@ -102,7 +112,11 @@ inline int lsb(uint64_t x) {
   return __builtin_ctzll(x);
 }
 #else
-#error "Currently only compilers defining __GNUC__ are supported"
+inline int lsb(uint64_t x) {
+  uint64_t y = x - 1;
+  x = (x | y) ^ y;
+  return std::log2(x);
+}
 #endif
 
 // Append all of the moves for some piece type which can end on the given
@@ -136,7 +150,7 @@ void append_moves_from(int from_square, uint64_t to_squares,
 
 // Generate pseudolegal king moves
 MoveList generate_king_moves(const GameState& gs) {
-  Position p = gs.pos();
+  const Position& p = gs.pos();
   bool white_to_move = gs.whites_move();
   int our_king = Position::color_piece(Position::KING, white_to_move);
   int our_pieces = Position::color_piece(Position::ALL, white_to_move);
@@ -151,7 +165,50 @@ MoveList generate_king_moves(const GameState& gs) {
 }
 
 void append_castling_moves(const GameState& gs, MoveList& l) {
-  // TODO
+  const Position& p = gs.pos();
+  bool white_to_move = gs.whites_move();
+  uint64_t squares_to_check = gs.castle_through_kingside();
+  if (squares_to_check != 0) {
+    bool can_castle = true;
+    while (squares_to_check != 0) {
+      int sq = lsb(squares_to_check);
+      squares_to_check &= squares_to_check - 1;
+      uint64_t attacks = get_attacks_to(p, sq, white_to_move,
+          p.get_board(Position::BOTH_ALL));
+      if (attacks != 0) {
+        can_castle = false;
+        break;
+      }
+    }
+    if (can_castle) {
+      if (white_to_move) {
+        l.push_back(Move(4, 6, Position::W_KING, Move::KING_CASTLE));
+      } else {
+        l.push_back(Move(60, 62, Position::B_KING, Move::KING_CASTLE));
+      }
+    }
+  }
+  squares_to_check = gs.castle_through_queenside();
+  if (squares_to_check != 0) {
+    bool can_castle = true;
+    while (squares_to_check != 0) {
+      int sq = lsb(squares_to_check);
+      squares_to_check &= squares_to_check - 1;
+      uint64_t attacks = get_attacks_to(p, sq, white_to_move,
+          p.get_board(Position::BOTH_ALL));
+      if (attacks != 0) {
+        can_castle = false;
+        break;
+      }
+    }
+    if (can_castle) {
+      if (white_to_move) {
+        l.push_back(Move(4, 2, Position::W_KING, Move::QUEEN_CASTLE));
+      } else {
+        l.push_back(Move(60, 58, Position::B_KING, Move::QUEEN_CASTLE));
+      }
+    }
+  }
 }
 
 void append_en_passant(const GameState& gs, MoveList& l) {
@@ -160,19 +217,20 @@ void append_en_passant(const GameState& gs, MoveList& l) {
   }
   int square = gs.en_passant_target();
   bool white_to_move = gs.whites_move();
-  Position p = gs.pos();
+  const Position& p = gs.pos();
+  int our_pawn = Position::color_piece(Position::PAWN, white_to_move);
   if (white_to_move) {
     if (p.piece_at(square - 9, our_pawn)) {
       l.push_back(Move(square - 9, square, our_pawn, Move::CAPTURE_EP));
     }
-    if (p.peice_at(square - 7, our_pawn)) {
+    if (p.piece_at(square - 7, our_pawn)) {
       l.push_back(Move(square - 7, square, our_pawn, Move::CAPTURE_EP));
     }
   } else {
     if (p.piece_at(square + 9, our_pawn)) {
       l.push_back(Move(square + 9, square, our_pawn, Move::CAPTURE_EP));
     }
-    if (p.peice_at(square + 7, our_pawn)) {
+    if (p.piece_at(square + 7, our_pawn)) {
       l.push_back(Move(square + 7, square, our_pawn, Move::CAPTURE_EP));
     }
   }
@@ -189,7 +247,7 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
   // avoid generating a lot of illegal moves.
   uint64_t check_board = get_check_board(gs);
   int count = popcount(check_board);
-  Position p = gs.pos();
+  const Position& p = gs.pos();
   bool white_to_move = gs.whites_move();
   if (count < 1) {
     // We are not in check, so generate all moves
@@ -295,6 +353,8 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
       }
     }
   }
+  // If count >= 2 then the only legal moves are king moves which have already
+  // been generated.
 
   return ret;
 }
