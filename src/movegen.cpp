@@ -1,6 +1,7 @@
 #include "movegen.hpp"
 
 #include <cstdlib>
+#include <set>
 #include <random>
 
 // A brief explanation of magic bitboards: When we need to figure out where
@@ -33,6 +34,17 @@ uint64_t king_moves[64];
 
 Magic rook_magics[64];
 Magic bishop_magics[64];
+
+bool pawn_can_capture(bool white_to_move, int from, int to) {
+  int frank = from / 8;
+  int ffile = from % 8;
+  int trank = to / 8;
+  int tfile = to % 8;
+  return ( white_to_move && trank == frank + 1 &&
+            (ffile == tfile + 1 || ffile == tfile - 1)) ||
+         (!white_to_move && trank == frank - 1 &&
+            (ffile == tfile + 1 || ffile == tfile - 1));
+}
 
 // Get a board representing all of the pieces which can move to the given
 // target. Note that this move only considers moves which end with a piece
@@ -88,9 +100,7 @@ uint64_t get_attacks_to(const Position& p, int target, bool white_to_move,
 }
 
 // Generate a bitboard of all checking pieces
-uint64_t get_check_board(const GameState& gs) {
-  bool white_to_move = gs.whites_move();
-  const Position& p = gs.pos();
+uint64_t get_check_board(bool white_to_move, const Position& p) {
   int king = Position::color_piece(Position::KING, white_to_move);
   int king_sq = *p.find_piece(king).begin();
   uint64_t occupancy = p.get_board(Position::BOTH_ALL);
@@ -220,19 +230,121 @@ void append_en_passant(const GameState& gs, MoveList& l) {
   const Position& p = gs.pos();
   int our_pawn = Position::color_piece(Position::PAWN, white_to_move);
   if (white_to_move) {
-    if (p.piece_at(square - 9, our_pawn)) {
+    if (p.piece_at(square - 9, our_pawn) && square % 8 > 0) {
       l.push_back(Move(square - 9, square, our_pawn, Move::CAPTURE_EP));
     }
-    if (p.piece_at(square - 7, our_pawn)) {
+    if (p.piece_at(square - 7, our_pawn) && square % 8 < 7) {
       l.push_back(Move(square - 7, square, our_pawn, Move::CAPTURE_EP));
     }
   } else {
-    if (p.piece_at(square + 9, our_pawn)) {
+    if (p.piece_at(square + 9, our_pawn) && square % 8 < 7) {
       l.push_back(Move(square + 9, square, our_pawn, Move::CAPTURE_EP));
     }
-    if (p.piece_at(square + 7, our_pawn)) {
+    if (p.piece_at(square + 7, our_pawn) && square % 8 > 0) {
       l.push_back(Move(square + 7, square, our_pawn, Move::CAPTURE_EP));
     }
+  }
+}
+
+void append_pawn_moves(const GameState& gs, MoveList& l) {
+  bool white_to_move = gs.whites_move();
+  int our_pawn = Position::color_piece(Position::PAWN, white_to_move);
+  const Position& p = gs.pos();
+  const std::set<int>& pawns = p.find_piece(our_pawn);
+  int opp_all = Position::color_piece(Position::ALL, !white_to_move);
+  uint64_t opp_pieces = p.get_board(opp_all);
+  uint64_t all_pieces = p.get_board(Position::BOTH_ALL);
+  for (int p : pawns) {
+    int target = white_to_move ? p + 8 : p - 8;
+    if (all_pieces & (1ull << target) == 0) {
+      if (target / 8 == 0 || target / 8 == 7) {
+        l.push_back(Move(p, target, our_pawn, Move::PROMOTE_KNIGHT));
+        l.push_back(Move(p, target, our_pawn, Move::PROMOTE_BISHOP));
+        l.push_back(Move(p, target, our_pawn, Move::PROMOTE_ROOK));
+        l.push_back(Move(p, target, our_pawn, Move::PROMOTE_QUEEN));
+      } else {
+        l.push_back(Move(p, target, our_pawn, Move::QUIET));
+      }
+    }
+    target--;   // pawn + 7 for white, pawn - 9 for black
+    if (p % 8 > 0 && (opp_pieces & (1ull << target) != 0)) {
+      if (target / 8 == 0 || target / 8 == 7) {
+        l.push_back(Move(p, target, our_pawn, Move::PROMOTE_KNIGHT_CAPTURE));
+        l.push_back(Move(p, target, our_pawn, Move::PROMOTE_BISHOP_CAPTURE));
+        l.push_back(Move(p, target, our_pawn, Move::PROMOTE_ROOK_CAPTURE));
+        l.push_back(Move(p, target, our_pawn, Move::PROMOTE_QUEEN_CAPTURE));
+      } else {
+        l.push_back(Move(p, target, our_pawn, Move::CAPTURE));
+      }
+    }
+    target += 2;
+    if (p % 8 < 7 && (opp_pieces & (1ull << target) != 0)) {
+      if (target / 8 == 0 || target / 8 == 7) {
+        l.push_back(Move(p, target, our_pawn, Move::PROMOTE_KNIGHT_CAPTURE));
+        l.push_back(Move(p, target, our_pawn, Move::PROMOTE_BISHOP_CAPTURE));
+        l.push_back(Move(p, target, our_pawn, Move::PROMOTE_ROOK_CAPTURE));
+        l.push_back(Move(p, target, our_pawn, Move::PROMOTE_QUEEN_CAPTURE));
+      } else {
+        l.push_back(Move(p, target, our_pawn, Move::CAPTURE));
+      }
+    }
+    if (white_to_move ? p / 8 == 1 : p / 8 == 6) {
+      target = white_to_move ? p + 16 : p - 16;
+      if (all_pieces & (1ull << target) == 0) {
+        l.push_back(Move(p, target, our_pawn, Move::PAWN_DOUBLE));
+      }
+    }
+  }
+}
+
+void append_knight_moves(const GameState& gs, MoveList& l) {
+  bool white_to_move = gs.whites_move();
+  int our_knight = Position::color_piece(Position::KNIGHT, white_to_move);
+  const Position& p = gs.pos();
+  const std::set<int>& knights = p.find_piece(our_knight);
+  int our_all = Position::color_piece(Position::ALL, white_to_move);
+  int opp_all = Position::color_piece(Position::ALL, !white_to_move);
+  uint64_t occupancy = p.get_board(our_all);
+  uint64_t opp_pieces = p.get_board(opp_all);
+  for (int k : knights) {
+    uint64_t moves_to = knight_moves[k] & ~occupancy;
+    append_moves_from(k, moves_to, our_knight, opp_all, l);
+  }
+}
+
+void append_sliding_moves(const GameState& gs, MoveList& l) {
+  bool white_to_move = gs.whites_move();
+  const Position& p = gs.pos();
+  uint64_t occupancy = p.get_board(Position::BOTH_ALL);
+  int our_all = Position::color_piece(Position::ALL, white_to_move);
+  uint64_t our_pieces = p.get_board(our_all);
+  int opp_all = Position::color_piece(Position::ALL, !white_to_move);
+  uint64_t opp_pieces = p.get_board(opp_all);
+  int our_rook = Position::color_piece(Position::ROOK, white_to_move);
+  const std::set<int>& rooks = p.find_piece(our_rook);
+  for (int r : rooks) {
+    Magic rm = rook_magics[r];
+    uint64_t r_att = rm.attack_table[(occupancy * rm.magic) >> (64 - rm.shift)];
+    uint64_t targets = r_att & ~our_pieces;
+    append_moves_from(r, targets, our_rook, opp_all, l);
+  }
+  int our_bishop = Position::color_piece(Position::BISHOP, white_to_move);
+  const std::set<int>& bishops = p.find_piece(our_bishop);
+  for (int b : bishops) {
+    Magic bm = bishop_magics[b];
+    uint64_t b_att = bm.attack_table[(occupancy * bm.magic) >> (64 - bm.shift)];
+    uint64_t targets = b_att & ~our_pieces;
+    append_moves_from(b, targets, our_bishop, opp_all, l);
+  }
+  int our_queen = Position::color_piece(Position::QUEEN, white_to_move);
+  const std::set<int>& queens = p.find_piece(our_queen);
+  for (int q : queens) {
+    Magic rm = rook_magics[q];
+    Magic bm = bishop_magics[q];
+    uint64_t r_att = rm.attack_table[(occupancy * rm.magic) >> (64 - rm.shift)];
+    uint64_t b_att = bm.attack_table[(occupancy * bm.magic) >> (64 - bm.shift)];
+    uint64_t targets = (r_att | b_att) & ~our_pieces;
+    append_moves_from(q, targets, our_queen, opp_all, l);
   }
 }
 
@@ -245,19 +357,17 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
   // Next we'll see if we're in check. We do this early because if we are in
   // check then we have a very limited set of moves to choose from so we can
   // avoid generating a lot of illegal moves.
-  uint64_t check_board = get_check_board(gs);
-  int count = popcount(check_board);
   const Position& p = gs.pos();
   bool white_to_move = gs.whites_move();
+  uint64_t check_board = get_check_board(white_to_move, p);
+  int count = popcount(check_board);
   if (count < 1) {
     // We are not in check, so generate all moves
     append_castling_moves(gs, ret);
     append_en_passant(gs, ret);
-
-    // TODO: Generate all normal moves
-
-    // For knights, bishops, rooks, and queens, the only restriction on moving is
-    // if the piece is pinned
+    append_pawn_moves(gs, ret);
+    append_knight_moves(gs, ret);
+    append_sliding_moves(gs, ret);
   } else if (count < 2) {
     // We are checked by one piece, so we only need to look for moves which
     // capture the piece or block the check (for a sliding attacker)
@@ -298,12 +408,12 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
       int square = lsb(legal_targets);
       legal_targets &= legal_targets - 1;
       uint64_t knights = knight_moves[square] & p.get_board(our_knight);
-      bool capture = p.get_board(opp_pieces & ~(1ull << square)) != 0;
+      bool capture = p.get_board(opp_pieces & (1ull << square)) != 0;
       append_moves_to(knights, square, our_knight, capture, ret);
       Magic rm = rook_magics[square];
       Magic bm = bishop_magics[square];
-      uint64_t r_att = rm.attack_table[(occupancy * rm.magic) << (64 - rm.shift)];
-      uint64_t b_att = bm.attack_table[(occupancy * bm.magic) << (64 - bm.shift)];
+      uint64_t r_att = rm.attack_table[(occupancy * rm.magic) >> (64 - rm.shift)];
+      uint64_t b_att = bm.attack_table[(occupancy * bm.magic) >> (64 - bm.shift)];
       uint64_t rooks = r_att & p.get_board(our_rook);
       uint64_t bishops = b_att & p.get_board(our_bishop);
       uint64_t queens = (r_att | b_att) & p.get_board(our_queen);
@@ -314,8 +424,7 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
       bool promote = white_to_move ? square / 8 == 7 : square / 8 == 0;
       for (int pawn : pawn_squares) {
         if (capture) {
-          if (( white_to_move && (pawn == square - 7 || pawn == square - 9)) ||
-              (!white_to_move && (pawn == square + 7 || pawn == square + 9))) {
+          if (pawn_can_capture(white_to_move, pawn, square)) {
             if (promote) {
               ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_KNIGHT_CAPTURE));
               ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_BISHOP_CAPTURE));
@@ -324,11 +433,6 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
             } else {
               ret.push_back(Move(pawn, square, our_pawn, Move::CAPTURE));
             }
-          } else if (gs.en_passant() &&
-                     (( white_to_move && gs.en_passant_target() == square + 8) ||
-                      (!white_to_move && gs.en_passant_target() == square - 8)) &&
-                     (pawn == square - 1 || pawn == square + 1)) {
-            ret.push_back(Move(pawn, gs.en_passant_target(), our_pawn, Move::CAPTURE_EP));
           }
         } else {
           if (( white_to_move && pawn == square - 8) ||
@@ -345,8 +449,7 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
                      (!white_to_move && pawn / 8 == 6 && pawn == square + 16)) {
             ret.push_back(Move(pawn, square, our_pawn, Move::PAWN_DOUBLE));
           } else if (gs.en_passant() && gs.en_passant_target() == square &&
-                     (( white_to_move && (pawn == square - 7 || pawn == square - 9)) ||
-                      (!white_to_move && (pawn == square + 7 || pawn == square + 9)))) {
+                     pawn_can_capture(white_to_move, pawn, square)) {
             ret.push_back(Move(pawn, square, our_pawn, Move::CAPTURE_EP));
           }
         }
@@ -361,7 +464,9 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
 
 // Check whether a given pseudolegal move results in check
 bool is_legal(const Move& m, const GameState& gs) {
-  // TODO
+  Position p(gs.pos());
+  p.make_move(m);
+  return get_check_board(gs.whites_move(), p) == 0;
 }
 
 MoveList generate_moves(const GameState& gs) {

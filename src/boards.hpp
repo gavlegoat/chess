@@ -90,7 +90,7 @@ class Move {
 class Position {
   private:
     uint64_t boards[NUM_BOARDS];
-    std::set<int> piece_sets[12];
+    std::set<int> piece_sets[NUM_BOARDS];
 
   public:
     static const int W_PAWN   = 0;
