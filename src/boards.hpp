@@ -1,9 +1,10 @@
-#ifndef _BOARDS_H_
-#define _BOARDS_H_
+#pragma once
 
 #include <map>
 #include <set>
-#include <iostream> 
+#include <iostream>
+#include <deque>
+
 #define NUM_BOARDS 15
 
 // A Move represents some move. This is characterized by the beginning and end
@@ -80,6 +81,15 @@ class Move {
 
     inline int piece() const {
       return piece_moved;
+    }
+
+    inline uint16_t get_flags() const {
+      return flags;
+    }
+
+    friend bool operator==(const Move& l, const Move& r) {
+      return l.flags == r.flags && l.piece_moved == r.piece_moved &&
+        l.from_sq == r.from_sq && l.to_sq == r.to_sq;
     }
 };
 
@@ -179,6 +189,25 @@ class Position {
     bool operator<(const Position& other) const;
 };
 
+class Node {
+  public:
+    Position position;    // The current board state
+    bool white_to_move;   // true if it's whites move, false if it's black's
+    bool w_castle_k;      // White can castle kingside
+    bool w_castle_q;      // White can castle queenside
+    bool b_castle_k;      // Black can castle kingside
+    bool b_castle_q;      // Black can castle queenside
+    uint64_t en_passant_square;   // The square where en passant can occur
+    bool en_passant_possible;      // true if an en passant move is legal
+    int half_moves_since_reset;        // Number of moves since pawn move or capture
+    int moves;      // Current move number (1 in the initial position)
+
+    Node();
+
+    Node(Position pos, bool wtm, bool wck, bool wcq, bool bck, bool bcq,
+        uint64_t eps, bool epp, int msr, int ms);
+};
+
 // A GameState represents:
 // - The current board position
 // - The player to move
@@ -189,17 +218,9 @@ class Position {
 //   looking for draws by repetition.
 class GameState {
   private:
-    Position position;    // The current board state
-    bool white_to_move;   // true if it's whites move, false if it's black's
-    bool w_castle_k;      // White can castle kingside
-    bool w_castle_q;      // White can castle queenside
-    bool b_castle_k;      // Black can castle kingside
-    bool b_castle_q;      // Black can castle queenside
-    int en_passant_square;   // The square where en passant can occur
-    bool en_passant_possible;      // true if an en passant move is legal
-    int half_moves_since_reset;        // Number of moves since pawn move or capture
-    int moves;      // Current move number (1 in the initial position)
+    Node node;
     std::map<Position, int> repeats;   // Repeated positions
+    std::deque<Node> history;
 
   public:
     // Create the initial game state
@@ -210,42 +231,41 @@ class GameState {
 
     // Fully general constructor
     GameState(Position pos, bool wtm, bool wck, bool wcq, bool bck, bool bcq,
-        uint64_t eps, bool epp, int msr, int ms, std::map<Position, int> rs);
+        uint64_t eps, bool epp, int msr, int ms, std::map<Position, int> rs,
+        std::deque<Node> history);
 
     inline bool whites_move() const {
-      return white_to_move;
+      return node.white_to_move;
     }
 
     inline const Position& pos() const {
-      return position;
+      return node.position;
     }
 
     inline bool en_passant() const {
-      return en_passant_possible;
+      return node.en_passant_possible;
     }
 
     inline int en_passant_target() const {
-      return en_passant_square;
+      return node.en_passant_square;
     }
 
     // Get a bitboard of squares we need to look at for checks when castling.
-    // Returns 0 if castling flags are false. Notice that the squares do not
-    // include the square the king is currently on since we look for checks
-    // before looking for castling moves.
+    // Returns 0 if castling flags are false.
     inline uint64_t castle_through_kingside() const {
-      if (white_to_move && w_castle_k) {
-        return (1ull << 5) | (1ull << 6);
-      } else if (!white_to_move && b_castle_k) {
-        return (1ull << 61) | (1ull << 62);
+      if (node.white_to_move && node.w_castle_k) {
+        return (1ull << 4) | (1ull << 5) | (1ull << 6);
+      } else if (!node.white_to_move && node.b_castle_k) {
+        return (1ull << 60) | (1ull << 61) | (1ull << 62);
       }
       return 0;
     }
 
     inline uint64_t castle_through_queenside() const {
-      if (white_to_move && w_castle_q) {
-        return (1ull << 2) | (1ull << 3);
-      } else if (!white_to_move && b_castle_q) {
-        return (1ull << 58) | (1ull << 59);
+      if (node.white_to_move && node.w_castle_q) {
+        return (1ull << 2) | (1ull << 3) | (1ull << 4);
+      } else if (!node.white_to_move && node.b_castle_q) {
+        return (1ull << 58) | (1ull << 59) | (1ull << 60);
       }
       return 0;
     }
@@ -253,9 +273,9 @@ class GameState {
     // Make a move
     void make_move(const Move& m);
 
+    void undo_move(const Move& m);
+
     std::string fen_string() const;
 
     friend std::ostream& operator<<(std::ostream& os, const GameState& gs);
 };
-
-#endif

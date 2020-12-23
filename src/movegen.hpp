@@ -1,5 +1,4 @@
-#ifndef _MOVEGEN_H_
-#define _MOVEGEN_H_
+#pragma once
 
 #include <deque>
 
@@ -19,4 +18,3 @@ void movegen_initialize_attack_boards();
 // Free the magic bitboard arrays.
 void movegen_free_magics();
 
-#endif

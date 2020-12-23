@@ -192,7 +192,7 @@ SCENARIO("we can make moves on a game state") {
   GIVEN("a game state") {
     Position p("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R");
     GameState gs(p, true, true, true, true, true, 0, false, 0, 1,
-        std::map<Position, int>());
+        std::map<Position, int>(), std::deque<Node>());
 
     CHECK(gs.fen_string() == "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1");
 

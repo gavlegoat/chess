@@ -1,4 +1,5 @@
 #include "movegen.hpp"
+#include "utils.hpp"
 
 #include <cstdlib>
 #include <set>
@@ -57,17 +58,20 @@ uint64_t get_attacks_to(const Position& p, int target, bool white_to_move,
   int opp_bishop = Position::color_piece(Position::BISHOP, !white_to_move);
   int opp_rook = Position::color_piece(Position::ROOK, !white_to_move);
   int opp_queen = Position::color_piece(Position::QUEEN, !white_to_move);
+  int opp_king = Position::color_piece(Position::KING, !white_to_move);
   uint64_t knight_board = p.get_board(opp_knight);
   uint64_t bishop_board = p.get_board(opp_bishop);
   uint64_t rook_board = p.get_board(opp_rook);
   uint64_t queen_board = p.get_board(opp_queen);
+  uint64_t king_board = p.get_board(opp_king);
   Magic bm = bishop_magics[target];
   uint64_t bishop_attack = bm.attack_table[((occupancy & bm.mask) * bm.magic)
     >> (64 - bm.shift)];
   Magic rm = rook_magics[target];
-  uint64_t rook_attack = rm.attack_table[((occupancy & rm.mask) & rm.magic)
+  uint64_t rook_attack = rm.attack_table[((occupancy & rm.mask) * rm.magic)
     >> (64 - rm.shift)];
-  uint64_t check_board = knight_moves[target] & opp_knight;
+  uint64_t check_board = knight_moves[target] & knight_board;
+  check_board |= king_moves[target] & king_board;
   check_board |= bishop_attack & (bishop_board | queen_board);
   check_board |= rook_attack & (rook_board | queen_board);
 
@@ -150,7 +154,7 @@ void append_moves_from(int from_square, uint64_t to_squares,
   while (to_squares != 0) {
     int tsq = lsb(to_squares);
     to_squares &= to_squares - 1;
-    if (opp_pieces & ~(1ull << tsq) != 0) {
+    if (opp_pieces & (1ull << tsq)) {
       l.push_back(Move(from_square, tsq, piece, Move::CAPTURE));
     } else {
       l.push_back(Move(from_square, tsq, piece, Move::QUIET));
@@ -177,23 +181,27 @@ MoveList generate_king_moves(const GameState& gs) {
 void append_castling_moves(const GameState& gs, MoveList& l) {
   const Position& p = gs.pos();
   bool white_to_move = gs.whites_move();
+  int our_king = Position::color_piece(Position::KING, white_to_move);
+  uint64_t king_board = p.get_board(our_king);
   uint64_t squares_to_check = gs.castle_through_kingside();
+  uint64_t occupancy = p.get_board(Position::BOTH_ALL);
   if (squares_to_check != 0) {
     bool can_castle = true;
     while (squares_to_check != 0) {
       int sq = lsb(squares_to_check);
       squares_to_check &= squares_to_check - 1;
-      uint64_t attacks = get_attacks_to(p, sq, white_to_move,
-          p.get_board(Position::BOTH_ALL));
-      if (attacks != 0) {
+      uint64_t attacks = get_attacks_to(p, sq, white_to_move, occupancy);
+      if (attacks != 0 || ((occupancy & (1ull << sq)) && !(king_board & (1ull << sq)))) {
         can_castle = false;
         break;
       }
     }
     if (can_castle) {
-      if (white_to_move) {
+      if (white_to_move && p.piece_at(4, Position::W_KING) &&
+          p.piece_at(7, Position::W_ROOK)) {
         l.push_back(Move(4, 6, Position::W_KING, Move::KING_CASTLE));
-      } else {
+      } else if (!white_to_move && p.piece_at(60, Position::B_KING) &&
+          p.piece_at(63, Position::B_ROOK)) {
         l.push_back(Move(60, 62, Position::B_KING, Move::KING_CASTLE));
       }
     }
@@ -204,17 +212,18 @@ void append_castling_moves(const GameState& gs, MoveList& l) {
     while (squares_to_check != 0) {
       int sq = lsb(squares_to_check);
       squares_to_check &= squares_to_check - 1;
-      uint64_t attacks = get_attacks_to(p, sq, white_to_move,
-          p.get_board(Position::BOTH_ALL));
-      if (attacks != 0) {
+      uint64_t attacks = get_attacks_to(p, sq, white_to_move, occupancy);
+      if (attacks != 0 || ((occupancy & (1ull << sq)) && !(king_board & (1ull << sq)))) {
         can_castle = false;
         break;
       }
     }
     if (can_castle) {
-      if (white_to_move) {
+      if (white_to_move && p.piece_at(4, Position::W_KING) &&
+          p.piece_at(0, Position::W_ROOK) && (occupancy & (1ull << 1)) == 0) {
         l.push_back(Move(4, 2, Position::W_KING, Move::QUEEN_CASTLE));
-      } else {
+      } else if (!white_to_move && p.piece_at(60, Position::B_KING) &&
+          p.piece_at(56, Position::B_ROOK) && (occupancy & (1ull << 57)) == 0) {
         l.push_back(Move(60, 58, Position::B_KING, Move::QUEEN_CASTLE));
       }
     }
@@ -256,7 +265,7 @@ void append_pawn_moves(const GameState& gs, MoveList& l) {
   uint64_t all_pieces = p.get_board(Position::BOTH_ALL);
   for (int p : pawns) {
     int target = white_to_move ? p + 8 : p - 8;
-    if (all_pieces & (1ull << target) == 0) {
+    if ((all_pieces & (1ull << target)) == 0) {
       if (target / 8 == 0 || target / 8 == 7) {
         l.push_back(Move(p, target, our_pawn, Move::PROMOTE_KNIGHT));
         l.push_back(Move(p, target, our_pawn, Move::PROMOTE_BISHOP));
@@ -267,7 +276,7 @@ void append_pawn_moves(const GameState& gs, MoveList& l) {
       }
     }
     target--;   // pawn + 7 for white, pawn - 9 for black
-    if (p % 8 > 0 && (opp_pieces & (1ull << target) != 0)) {
+    if (p % 8 > 0 && ((opp_pieces & (1ull << target)) != 0)) {
       if (target / 8 == 0 || target / 8 == 7) {
         l.push_back(Move(p, target, our_pawn, Move::PROMOTE_KNIGHT_CAPTURE));
         l.push_back(Move(p, target, our_pawn, Move::PROMOTE_BISHOP_CAPTURE));
@@ -278,7 +287,7 @@ void append_pawn_moves(const GameState& gs, MoveList& l) {
       }
     }
     target += 2;
-    if (p % 8 < 7 && (opp_pieces & (1ull << target) != 0)) {
+    if (p % 8 < 7 && ((opp_pieces & (1ull << target)) != 0)) {
       if (target / 8 == 0 || target / 8 == 7) {
         l.push_back(Move(p, target, our_pawn, Move::PROMOTE_KNIGHT_CAPTURE));
         l.push_back(Move(p, target, our_pawn, Move::PROMOTE_BISHOP_CAPTURE));
@@ -290,7 +299,8 @@ void append_pawn_moves(const GameState& gs, MoveList& l) {
     }
     if (white_to_move ? p / 8 == 1 : p / 8 == 6) {
       target = white_to_move ? p + 16 : p - 16;
-      if (all_pieces & (1ull << target) == 0) {
+      int sq = white_to_move ? p + 8 : p - 8;
+      if ((all_pieces & ((1ull << target) | (1ull << sq))) == 0) {
         l.push_back(Move(p, target, our_pawn, Move::PAWN_DOUBLE));
       }
     }
@@ -308,7 +318,7 @@ void append_knight_moves(const GameState& gs, MoveList& l) {
   uint64_t opp_pieces = p.get_board(opp_all);
   for (int k : knights) {
     uint64_t moves_to = knight_moves[k] & ~occupancy;
-    append_moves_from(k, moves_to, our_knight, opp_all, l);
+    append_moves_from(k, moves_to, our_knight, opp_pieces, l);
   }
 }
 
@@ -324,27 +334,27 @@ void append_sliding_moves(const GameState& gs, MoveList& l) {
   const std::set<int>& rooks = p.find_piece(our_rook);
   for (int r : rooks) {
     Magic rm = rook_magics[r];
-    uint64_t r_att = rm.attack_table[(occupancy * rm.magic) >> (64 - rm.shift)];
+    uint64_t r_att = rm.attack_table[((occupancy & rm.mask) * rm.magic) >> (64 - rm.shift)];
     uint64_t targets = r_att & ~our_pieces;
-    append_moves_from(r, targets, our_rook, opp_all, l);
+    append_moves_from(r, targets, our_rook, opp_pieces, l);
   }
   int our_bishop = Position::color_piece(Position::BISHOP, white_to_move);
   const std::set<int>& bishops = p.find_piece(our_bishop);
   for (int b : bishops) {
     Magic bm = bishop_magics[b];
-    uint64_t b_att = bm.attack_table[(occupancy * bm.magic) >> (64 - bm.shift)];
+    uint64_t b_att = bm.attack_table[((occupancy & bm.mask) * bm.magic) >> (64 - bm.shift)];
     uint64_t targets = b_att & ~our_pieces;
-    append_moves_from(b, targets, our_bishop, opp_all, l);
+    append_moves_from(b, targets, our_bishop, opp_pieces, l);
   }
   int our_queen = Position::color_piece(Position::QUEEN, white_to_move);
   const std::set<int>& queens = p.find_piece(our_queen);
   for (int q : queens) {
     Magic rm = rook_magics[q];
     Magic bm = bishop_magics[q];
-    uint64_t r_att = rm.attack_table[(occupancy * rm.magic) >> (64 - rm.shift)];
-    uint64_t b_att = bm.attack_table[(occupancy * bm.magic) >> (64 - bm.shift)];
+    uint64_t r_att = rm.attack_table[((occupancy & rm.mask) * rm.magic) >> (64 - rm.shift)];
+    uint64_t b_att = bm.attack_table[((occupancy & bm.mask) * bm.magic) >> (64 - bm.shift)];
     uint64_t targets = (r_att | b_att) & ~our_pieces;
-    append_moves_from(q, targets, our_queen, opp_all, l);
+    append_moves_from(q, targets, our_queen, opp_pieces, l);
   }
 }
 
@@ -357,105 +367,105 @@ MoveList generate_pseudolegal_moves(const GameState& gs) {
   // Next we'll see if we're in check. We do this early because if we are in
   // check then we have a very limited set of moves to choose from so we can
   // avoid generating a lot of illegal moves.
-  const Position& p = gs.pos();
-  bool white_to_move = gs.whites_move();
-  uint64_t check_board = get_check_board(white_to_move, p);
-  int count = popcount(check_board);
-  if (count < 1) {
+  //const Position& p = gs.pos();
+  //bool white_to_move = gs.whites_move();
+  //uint64_t check_board = get_check_board(white_to_move, p);
+  //int count = popcount(check_board);
+  //if (count < 1) {
     // We are not in check, so generate all moves
     append_castling_moves(gs, ret);
     append_en_passant(gs, ret);
     append_pawn_moves(gs, ret);
     append_knight_moves(gs, ret);
     append_sliding_moves(gs, ret);
-  } else if (count < 2) {
-    // We are checked by one piece, so we only need to look for moves which
-    // capture the piece or block the check (for a sliding attacker)
-    int checking_piece_sq = lsb(check_board);
-    // Calculate a set of legal target squares
-    uint64_t legal_targets = 1ull << checking_piece_sq;
-    int our_king = Position::color_piece(Position::KING, white_to_move);
-    int opp_knight = Position::color_piece(Position::KNIGHT, !white_to_move);
-    int our_knight = Position::color_piece(Position::KNIGHT, white_to_move);
-    int our_bishop = Position::color_piece(Position::BISHOP, white_to_move);
-    int our_rook = Position::color_piece(Position::ROOK, white_to_move);
-    int our_queen = Position::color_piece(Position::QUEEN, white_to_move);
-    int our_pawn = Position::color_piece(Position::PAWN, white_to_move);
-    int opp_pieces = Position::color_piece(Position::ALL, !white_to_move);
-    // If the checking piece is a kngiht then the only legal target square is
-    // the position of the checking piece, so there's nothing to do
-    if (!p.piece_at(checking_piece_sq, opp_knight)) {
-      // Otherwise, the piece is a sliding attacker, so the legal squares
-      // consist of the location of the attacking piece along with a line
-      // connecting the attacking piece to our king. Note that the same applies
-      // to pawns even thought they aren't technically sliding attackers.
-      int our_king_pos = *p.find_piece(our_king).begin();
-      int rank = checking_piece_sq / 8;
-      int file = checking_piece_sq % 8;
-      int king_rank = our_king_pos / 8;
-      int king_file = our_king_pos % 8;
-      int drank = rank > king_rank ? -1 : (rank < king_rank ? 1 : 0);
-      int dfile = file > king_file ? -1 : (file < king_file ? 1 : 0);
-      while (rank != king_rank || file != king_file) {
-        legal_targets |= 1ull << (rank * 8 + file);
-        rank += drank;
-        file += dfile;
-      }
-    }
-    // Generate moves that end on legal_targets
-    uint64_t occupancy = p.get_board(Position::BOTH_ALL);
-    while (legal_targets != 0) {
-      int square = lsb(legal_targets);
-      legal_targets &= legal_targets - 1;
-      uint64_t knights = knight_moves[square] & p.get_board(our_knight);
-      bool capture = p.get_board(opp_pieces & (1ull << square)) != 0;
-      append_moves_to(knights, square, our_knight, capture, ret);
-      Magic rm = rook_magics[square];
-      Magic bm = bishop_magics[square];
-      uint64_t r_att = rm.attack_table[(occupancy * rm.magic) >> (64 - rm.shift)];
-      uint64_t b_att = bm.attack_table[(occupancy * bm.magic) >> (64 - bm.shift)];
-      uint64_t rooks = r_att & p.get_board(our_rook);
-      uint64_t bishops = b_att & p.get_board(our_bishop);
-      uint64_t queens = (r_att | b_att) & p.get_board(our_queen);
-      append_moves_to(rooks, square, our_rook, capture, ret);
-      append_moves_to(bishops, square, our_bishop, capture, ret);
-      append_moves_to(queens, square, our_queen, capture, ret);
-      std::set<int> pawn_squares = p.find_piece(our_pawn);
-      bool promote = white_to_move ? square / 8 == 7 : square / 8 == 0;
-      for (int pawn : pawn_squares) {
-        if (capture) {
-          if (pawn_can_capture(white_to_move, pawn, square)) {
-            if (promote) {
-              ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_KNIGHT_CAPTURE));
-              ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_BISHOP_CAPTURE));
-              ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_ROOK_CAPTURE));
-              ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_QUEEN_CAPTURE));
-            } else {
-              ret.push_back(Move(pawn, square, our_pawn, Move::CAPTURE));
-            }
-          }
-        } else {
-          if (( white_to_move && pawn == square - 8) ||
-              (!white_to_move && pawn == square + 8)) {
-            if (promote) {
-              ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_KNIGHT));
-              ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_BISHOP));
-              ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_ROOK));
-              ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_QUEEN));
-            } else {
-              ret.push_back(Move(pawn, square, our_pawn, Move::QUIET));
-            }
-          } else if (( white_to_move && pawn / 8 == 1 && pawn == square - 16) ||
-                     (!white_to_move && pawn / 8 == 6 && pawn == square + 16)) {
-            ret.push_back(Move(pawn, square, our_pawn, Move::PAWN_DOUBLE));
-          } else if (gs.en_passant() && gs.en_passant_target() == square &&
-                     pawn_can_capture(white_to_move, pawn, square)) {
-            ret.push_back(Move(pawn, square, our_pawn, Move::CAPTURE_EP));
-          }
-        }
-      }
-    }
-  }
+  //} else if (count < 2) {
+  //  // We are checked by one piece, so we only need to look for moves which
+  //  // capture the piece or block the check (for a sliding attacker)
+  //  int checking_piece_sq = lsb(check_board);
+  //  // Calculate a set of legal target squares
+  //  uint64_t legal_targets = 1ull << checking_piece_sq;
+  //  int our_king = Position::color_piece(Position::KING, white_to_move);
+  //  int opp_knight = Position::color_piece(Position::KNIGHT, !white_to_move);
+  //  int our_knight = Position::color_piece(Position::KNIGHT, white_to_move);
+  //  int our_bishop = Position::color_piece(Position::BISHOP, white_to_move);
+  //  int our_rook = Position::color_piece(Position::ROOK, white_to_move);
+  //  int our_queen = Position::color_piece(Position::QUEEN, white_to_move);
+  //  int our_pawn = Position::color_piece(Position::PAWN, white_to_move);
+  //  int opp_pieces = Position::color_piece(Position::ALL, !white_to_move);
+  //  // If the checking piece is a kngiht then the only legal target square is
+  //  // the position of the checking piece, so there's nothing to do
+  //  if (!p.piece_at(checking_piece_sq, opp_knight)) {
+  //    // Otherwise, the piece is a sliding attacker, so the legal squares
+  //    // consist of the location of the attacking piece along with a line
+  //    // connecting the attacking piece to our king. Note that the same applies
+  //    // to pawns even thought they aren't technically sliding attackers.
+  //    int our_king_pos = *p.find_piece(our_king).begin();
+  //    int rank = checking_piece_sq / 8;
+  //    int file = checking_piece_sq % 8;
+  //    int king_rank = our_king_pos / 8;
+  //    int king_file = our_king_pos % 8;
+  //    int drank = rank > king_rank ? -1 : (rank < king_rank ? 1 : 0);
+  //    int dfile = file > king_file ? -1 : (file < king_file ? 1 : 0);
+  //    while (rank != king_rank || file != king_file) {
+  //      legal_targets |= 1ull << (rank * 8 + file);
+  //      rank += drank;
+  //      file += dfile;
+  //    }
+  //  }
+  //  // Generate moves that end on legal_targets
+  //  uint64_t occupancy = p.get_board(Position::BOTH_ALL);
+  //  while (legal_targets != 0) {
+  //    int square = lsb(legal_targets);
+  //    legal_targets &= legal_targets - 1;
+  //    uint64_t knights = knight_moves[square] & p.get_board(our_knight);
+  //    bool capture = p.get_board(opp_pieces & (1ull << square)) != 0;
+  //    append_moves_to(knights, square, our_knight, capture, ret);
+  //    Magic rm = rook_magics[square];
+  //    Magic bm = bishop_magics[square];
+  //    uint64_t r_att = rm.attack_table[(occupancy * rm.magic) >> (64 - rm.shift)];
+  //    uint64_t b_att = bm.attack_table[(occupancy * bm.magic) >> (64 - bm.shift)];
+  //    uint64_t rooks = r_att & p.get_board(our_rook);
+  //    uint64_t bishops = b_att & p.get_board(our_bishop);
+  //    uint64_t queens = (r_att | b_att) & p.get_board(our_queen);
+  //    append_moves_to(rooks, square, our_rook, capture, ret);
+  //    append_moves_to(bishops, square, our_bishop, capture, ret);
+  //    append_moves_to(queens, square, our_queen, capture, ret);
+  //    std::set<int> pawn_squares = p.find_piece(our_pawn);
+  //    bool promote = white_to_move ? square / 8 == 7 : square / 8 == 0;
+  //    for (int pawn : pawn_squares) {
+  //      if (capture) {
+  //        if (pawn_can_capture(white_to_move, pawn, square)) {
+  //          if (promote) {
+  //            ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_KNIGHT_CAPTURE));
+  //            ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_BISHOP_CAPTURE));
+  //            ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_ROOK_CAPTURE));
+  //            ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_QUEEN_CAPTURE));
+  //          } else {
+  //            ret.push_back(Move(pawn, square, our_pawn, Move::CAPTURE));
+  //          }
+  //        }
+  //      } else {
+  //        if (( white_to_move && pawn == square - 8) ||
+  //            (!white_to_move && pawn == square + 8)) {
+  //          if (promote) {
+  //            ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_KNIGHT));
+  //            ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_BISHOP));
+  //            ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_ROOK));
+  //            ret.push_back(Move(pawn, square, our_pawn, Move::PROMOTE_QUEEN));
+  //          } else {
+  //            ret.push_back(Move(pawn, square, our_pawn, Move::QUIET));
+  //          }
+  //        } else if (( white_to_move && pawn / 8 == 1 && pawn == square - 16) ||
+  //                   (!white_to_move && pawn / 8 == 6 && pawn == square + 16)) {
+  //          ret.push_back(Move(pawn, square, our_pawn, Move::PAWN_DOUBLE));
+  //        } else if (gs.en_passant() && gs.en_passant_target() == square &&
+  //                   pawn_can_capture(white_to_move, pawn, square)) {
+  //          ret.push_back(Move(pawn, square, our_pawn, Move::CAPTURE_EP));
+  //        }
+  //      }
+  //    }
+  //  }
+  //}
   // If count >= 2 then the only legal moves are king moves which have already
   // been generated.
 
@@ -554,17 +564,17 @@ uint64_t generate_occupancy_mask(int s, bool is_rook) {
 std::vector<uint64_t> generate_possible_occupancies(int sq,
     uint64_t occupancy, uint64_t partial, int ind) {
   if (ind >= 64) {
-    return std::vector<uint64_t>();
+    return std::vector<uint64_t>{partial};
   }
-  if (occupancy & (1ull << ind) == 0) {
-    return std::vector<uint64_t>();
-  }
+
   std::vector<uint64_t> zero = generate_possible_occupancies(sq, occupancy,
       partial, ind + 1);
-  std::vector<uint64_t> one = generate_possible_occupancies(sq, occupancy,
-      partial | (1ull << ind), ind + 1);
 
-  zero.insert(zero.end(), one.begin(), one.end());
+  if ((occupancy & (1ull << ind))) {
+    std::vector<uint64_t> one = generate_possible_occupancies(sq, occupancy,
+        partial | (1ull << ind), ind + 1);
+    zero.insert(zero.end(), one.begin(), one.end());
+  }
   return zero;
 }
 
@@ -582,7 +592,7 @@ uint64_t generate_attack(int sq, uint64_t occupancy, bool is_rook) {
     while (nrank < 8) {
       square = 8 * nrank + nfile;
       attack |= 1ull << square;
-      if (~(1ull << square) & occupancy != 0) {
+      if ((1ull << square) & occupancy) {
         break;
       }
       nrank++;
@@ -591,74 +601,74 @@ uint64_t generate_attack(int sq, uint64_t occupancy, bool is_rook) {
     while (nrank >= 0) {
       square = 8 * nrank + nfile;
       attack |= 1ull << square;
-      nrank--;
-      if (~(1ull << square) & occupancy != 0) {
+      if ((1ull << square) & occupancy) {
         break;
       }
+      nrank--;
     }
     nrank = rank;
     nfile = file + 1;
     while (nfile < 8) {
       square = 8 * nrank + nfile;
       attack |= 1ull << square;
-      nfile++;
-      if (~(1ull << square) & occupancy != 0) {
+      if ((1ull << square) & occupancy) {
         break;
       }
+      nfile++;
     }
     nfile = file - 1;
     while (nfile >= 0) {
       square = 8 * nrank + nfile;
       attack |= 1ull << square;
-      nfile--;
-      if (~(1ull << square) & occupancy != 0) {
+      if ((1ull << square) & occupancy) {
         break;
       }
+      nfile--;
     }
   } else {
     nrank = rank + 1;
     nfile = file + 1;
     while (nfile < 8 && nrank < 8) {
       square = 8 * nrank + nfile;
-      occupancy |= 1ull << square;
-      nrank++;
-      nfile++;
-      if (~(1ull << square) & occupancy != 0) {
+      attack |= 1ull << square;
+      if ((1ull << square) & occupancy) {
         break;
       }
+      nrank++;
+      nfile++;
     }
     nrank = rank + 1;
     nfile = file - 1;
     while (nfile >= 0 && nrank < 8) {
       square = 8 * nrank + nfile;
-      occupancy |= 1ull << square;
-      nrank++;
-      nfile--;
-      if (~(1ull << square) & occupancy != 0) {
+      attack |= 1ull << square;
+      if ((1ull << square) & occupancy) {
         break;
       }
+      nrank++;
+      nfile--;
     }
     nrank = rank - 1;
     nfile = file + 1;
     while (nfile < 8 && nrank >= 0) {
       square = 8 * nrank + nfile;
-      occupancy |= 1ull << square;
-      nrank--;
-      nfile++;
-      if (~(1ull << square) & occupancy != 0) {
+      attack |= 1ull << square;
+      if ((1ull << square) & occupancy) {
         break;
       }
+      nrank--;
+      nfile++;
     }
     nrank = rank - 1;
     nfile = file - 1;
     while (nfile >= 0 && nrank >= 0) {
       square = 8 * nrank + nfile;
-      occupancy |= 1ull << square;
-      nrank--;
-      nfile--;
-      if (~(1ull << square) & occupancy != 0) {
+      attack |= 1ull << square;
+      if ((1ull << square) & occupancy) {
         break;
       }
+      nrank--;
+      nfile--;
     }
   }
   return attack;
@@ -774,15 +784,12 @@ void movegen_initialize_attack_boards() {
 
     // Initialize king moves
     for (int j = -1; j <= 1; j++) {
-      if (j == 0) {
-        continue;
-      }
       for (int k = -1; k <= 1; k++) {
-        if (k == 0) {
+        if (j == 0 && k == 0) {
           continue;
         }
         nrank = rank + j;
-        nfile = rank + k;
+        nfile = file + k;
         if (nrank < 0 || nrank >= 8 || nfile < 0 || nfile >= 8) {
           continue;
         }

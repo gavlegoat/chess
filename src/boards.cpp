@@ -213,12 +213,20 @@ bool Position::operator<(const Position& other) const {
   return false;
 }
 
-GameState::GameState() :
-  position(Position("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")),
-  white_to_move(true), w_castle_k(true), w_castle_q(true), b_castle_k(true),
-  b_castle_q(true), en_passant_square(0x0000000000000000ull),
-  en_passant_possible(false), half_moves_since_reset(0), moves(1),
-  repeats(std::map<Position, int>()) {}
+Node::Node():
+  position("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"),
+  white_to_move{true}, w_castle_k{true}, w_castle_q{true}, b_castle_k{true},
+  b_castle_q{true}, en_passant_square{0x0000000000000000ull},
+  en_passant_possible{false}, half_moves_since_reset{0}, moves{1} {}
+
+Node::Node(Position pos, bool wtm, bool wck, bool wcq, bool bck, bool bcq,
+    uint64_t eps, bool epp, int msr, int ms):
+  position{pos}, white_to_move{wtm}, w_castle_k{wck}, w_castle_q{wcq},
+  b_castle_k{bck}, b_castle_q{bcq}, en_passant_square{eps},
+  en_passant_possible{epp}, half_moves_since_reset{msr}, moves{ms} {}
+
+GameState::GameState():
+  node(), repeats(), history() {}
 
 GameState::GameState(std::string fen) {
   std::vector<std::string> words = split(fen, ' ');
@@ -229,78 +237,68 @@ GameState::GameState(std::string fen) {
   std::string half_moves = words[4];
   std::string move_number = words[5];
 
-  white_to_move = (color == "w");
-  w_castle_k = (castling.find("K") != std::string::npos);
-  w_castle_q = (castling.find("Q") != std::string::npos);
-  b_castle_k = (castling.find("k") != std::string::npos);
-  b_castle_q = (castling.find("q") != std::string::npos);
+  bool white_to_move = (color == "w");
+  bool w_castle_k = (castling.find("K") != std::string::npos);
+  bool w_castle_q = (castling.find("Q") != std::string::npos);
+  bool b_castle_k = (castling.find("k") != std::string::npos);
+  bool b_castle_q = (castling.find("q") != std::string::npos);
+  uint16_t en_passant_square = 0;
+  bool en_passant_possible = false;
   if (en_passant != "-") {
     en_passant_square = algebraic_to_int(en_passant);
     en_passant_possible = true;
-  } else {
-    en_passant_possible = false;
   }
-  half_moves_since_reset = std::stoi(half_moves);
+  int half_moves_since_reset = std::stoi(half_moves);
+  Position position = Position(board);
+  int moves = std::stoi(move_number);
+  node = Node(position, white_to_move, w_castle_k, w_castle_q, b_castle_k, b_castle_q,
+      en_passant_square, en_passant_possible, half_moves_since_reset, moves);
   repeats = std::map<Position, int>();
-  position = Position(board);
-  moves = std::stoi(move_number);
+  history = std::deque<Node>();
 }
 
 GameState::GameState(Position pos, bool wtm, bool wck, bool wcq, bool bck,
     bool bcq, uint64_t eps, bool epp, int msr, int ms,
-    std::map<Position, int> rs) :
-  position(pos), white_to_move(wtm), w_castle_k(wck), w_castle_q(wcq),
-  b_castle_k(bck), b_castle_q(bcq), en_passant_square(eps),
-  en_passant_possible(epp), half_moves_since_reset(msr), moves(ms),
-  repeats(rs) {}
+    std::map<Position, int> rs, std::deque<Node> hist) :
+  node(pos, wtm, wck, wcq, bck, bcq, eps, epp, msr, ms),
+  repeats(rs), history(hist) {}
 
 void GameState::make_move(const Move& m) {
+  history.push_back(Node(this->node));
   // Change the current board state
-  position.make_move(m);
+  node.position.make_move(m);
   // Update castling possiblities
   // Since both players often castle early in the game we wrap this in a check
   // to see if the current player can castle in order to skip it in most runs
-  if (( white_to_move && (w_castle_q || w_castle_k)) ||
-      (!white_to_move && (b_castle_q || b_castle_k))) {
-    if (m.castle_queenside()) {
-      if (white_to_move) {
-        w_castle_q = false;
-      } else {
-        b_castle_q = false;
-      }
-    } else if (m.castle_kingside()) {
-      if (white_to_move) {
-        w_castle_k = false;
-      } else {
-        b_castle_k = false;
-      }
-    }
+  if (( node.white_to_move && (node.w_castle_q || node.w_castle_k)) ||
+      (!node.white_to_move && (node.b_castle_q || node.b_castle_k))) {
 
     // If the king or rook moved, update castling possibilities
     int from_square = m.from_square();
     int to_square = m.to_square();
-    if (white_to_move) {
-      if (position.piece_at(to_square, Position::W_KING)) {
-        w_castle_q = false;
-        w_castle_k = false;
-      } else if (position.piece_at(to_square, Position::W_ROOK)) {
+
+    if (node.white_to_move) {
+      if (m.piece() == Position::W_KING) {
+        node.w_castle_q = false;
+        node.w_castle_k = false;
+      } else if (m.piece() == Position::W_ROOK) {
         if (from_square == 0) {
           // This is white's queenside rook
-          w_castle_q = false;
-        } else {
-          w_castle_k = false;
+          node.w_castle_q = false;
+        } else if (from_square == 7) {
+          node.w_castle_k = false;
         }
       }
     } else {
-      if (position.piece_at(to_square, Position::B_KING)) {
-        b_castle_q = false;
-        b_castle_k = false;
-      } else if (position.piece_at(to_square, Position::B_ROOK)) {
+      if (m.piece() == Position::B_KING) {
+        node.b_castle_q = false;
+        node.b_castle_k = false;
+      } else if (m.piece() == Position::B_ROOK) {
         if (from_square == 56) {
           // This is black's queenside rook
-          b_castle_q = false;
-        } else {
-          b_castle_k = false;
+          node.b_castle_q = false;
+        } else if (from_square == 63) {
+          node.b_castle_k = false;
         }
       }
     }
@@ -308,57 +306,70 @@ void GameState::make_move(const Move& m) {
 
   // Update en passant possibilities
   if (m.double_pawn_push()) {
-    en_passant_possible = true;
-    if (white_to_move) {
+    node.en_passant_possible = true;
+    if (node.white_to_move) {
       // White moved so the relevant square is behind the new square
-      en_passant_square = m.to_square() - 8;
+      node.en_passant_square = m.to_square() - 8;
     } else {
-      en_passant_square = m.to_square() + 8;
+      node.en_passant_square = m.to_square() + 8;
     }
   } else {
-    en_passant_possible = false;
+    node.en_passant_possible = false;
   }
   // Update the 50-move counter
   if (m.double_pawn_push() || m.capture() ||
       m.piece() == Position::W_PAWN || m.piece() == Position::B_PAWN) {
-    half_moves_since_reset = 0;
+    node.half_moves_since_reset = 0;
   } else {
-    half_moves_since_reset++;
+    node.half_moves_since_reset++;
   }
   // Update the move counter
-  if (!white_to_move) {
-    moves++;
+  if (!node.white_to_move) {
+    node.moves++;
   }
   // Update repeated positions
-  if (repeats.find(position) == repeats.end()) {
-    repeats[position] = 1;
+  if (repeats.find(node.position) == repeats.end()) {
+    repeats[node.position] = 1;
   } else {
-    repeats[position]++;
+    repeats[node.position]++;
   }
   // It's now the next player's turn
-  white_to_move = !white_to_move;
+  node.white_to_move = !node.white_to_move;
+}
+
+void GameState::undo_move(const Move& m) {
+  // Remove one instance of this position from the repetitions table
+  if (repeats[node.position] == 1) {
+    repeats.erase(node.position);
+  } else {
+    repeats[node.position]--;
+  }
+
+  // Now we can just take the previous node
+  node = history.back();
+  history.pop_back();
 }
 
 // Convert a GameState to a FEN string
 std::string GameState::fen_string() const {
-  std::string ret = position.fen_board();
+  std::string ret = node.position.fen_board();
   ret += " ";
-  if (white_to_move) {
+  if (node.white_to_move) {
     ret += "w ";
   } else {
     ret += "b ";
   }
   std::string castle = "";
-  if (w_castle_k) {
+  if (node.w_castle_k) {
     castle += "K";
   }
-  if (w_castle_q) {
+  if (node.w_castle_q) {
     castle += "Q";
   }
-  if (b_castle_k) {
+  if (node.b_castle_k) {
     castle += "k";
   }
-  if (b_castle_q) {
+  if (node.b_castle_q) {
     castle += "q";
   }
   if (castle == "") {
@@ -366,18 +377,19 @@ std::string GameState::fen_string() const {
   } else {
     ret += castle + " ";
   }
-  if (en_passant_possible) {
-    ret += int_to_algebraic(en_passant_square) + " ";
+  if (node.en_passant_possible) {
+    ret += int_to_algebraic(node.en_passant_square) + " ";
   } else {
     ret += "- ";
   }
-  ret += std::to_string(half_moves_since_reset) + " ";
-  ret += std::to_string(moves);
+  ret += std::to_string(node.half_moves_since_reset) + " ";
+  ret += std::to_string(node.moves);
   return ret;
 }
 
 std::ostream& operator<<(std::ostream& os, const GameState& gs) {
   os << gs.fen_string();
+  return os;
 }
 
 Move::Move(int from, int to, int p, uint16_t fl) :

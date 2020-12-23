@@ -1,5 +1,4 @@
-#ifndef _UTILS_H_
-#define _UTILS_H_
+#pragma once
 
 #include <vector>
 #include <string>
@@ -11,5 +10,3 @@ int algebraic_to_int(std::string algebraic);
 
 // Convert an index to algebraic notation
 std::string int_to_algebraic(int pos);
-
-#endif
