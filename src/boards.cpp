@@ -337,7 +337,11 @@ void GameState::make_move(const Move& m) {
   node.white_to_move = !node.white_to_move;
 }
 
-void GameState::undo_move(const Move& m) {
+void GameState::flip_move() {
+  node.white_to_move = !node.white_to_move;
+}
+
+void GameState::undo_move() {
   // Remove one instance of this position from the repetitions table
   if (repeats[node.position] == 1) {
     repeats.erase(node.position);

@@ -30,7 +30,7 @@ uint64_t perft(int depth, GameState start) {
     //  std::cout << p << std::endl;
     //}
     n += p;
-    start.undo_move(m);
+    start.undo_move();
   }
 
   return n;

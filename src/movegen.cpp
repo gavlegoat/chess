@@ -17,25 +17,35 @@
 // can shift this resulting value so that the relevant bits are the lowest bits
 // and use it to index a table of legal moves. This way we can use at most 13
 // index bits to store all of the relevant moves, rather than 64.
-//
 // Given a Magic object m and a piece occupancy bitboard occ for the whole
 // board, we compute the possible attacks as
 // attack_table[((occ & m.mask) * magic) >> (64 - shift)]
+
+/**
+ * \brief A magic bitboard.
+ */
 typedef struct {
+  /// The generated magic number.
   uint64_t magic;
+  /// The occlusion mask.
   uint64_t mask;
+  /// An array of attack boards.
   uint64_t* attack_table;
+  /// The shift to apply.
   int shift;
 } Magic;
 
-// These variables hold masks showing where each piece can potentially move
-// given an empty board.
+/// A set of masks showing where the knight can move to from each square.
 uint64_t knight_moves[64];
+/// A set of masks showing where the king can move to from each square.
 uint64_t king_moves[64];
 
+/// A set of magic bitboards describing rook moves form each square.
 Magic rook_magics[64];
+/// A set of magic bitboards describing bishop moves form each square.
 Magic bishop_magics[64];
 
+// Determine whetehr a pawn can capture from one square to another.
 bool pawn_can_capture(bool white_to_move, int from, int to) {
   int frank = from / 8;
   int ffile = from % 8;
@@ -109,6 +119,10 @@ uint64_t get_check_board(bool white_to_move, const Position& p) {
   int king_sq = *p.find_piece(king).begin();
   uint64_t occupancy = p.get_board(Position::BOTH_ALL);
   return get_attacks_to(p, king_sq, white_to_move, occupancy);
+}
+
+bool in_check(bool white_to_move, const Position& p) {
+  return !(get_check_board(white_to_move, p) == 0);
 }
 
 // Count the number of 1 bits in a number
