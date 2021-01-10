@@ -7,7 +7,7 @@
 #include "utils.hpp"
 
 // Perft testing is slow so we allow it to be disabled.
-#define ENABLE_PERFT
+//#define ENABLE_PERFT
 
 void debug_move_list(const MoveList& l) {
   for (const Move& m : l) {

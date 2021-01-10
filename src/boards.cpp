@@ -275,7 +275,6 @@ void GameState::make_move(const Move& m) {
 
     // If the king or rook moved, update castling possibilities
     int from_square = m.from_square();
-    int to_square = m.to_square();
 
     if (node.white_to_move) {
       if (m.piece() == Position::W_KING) {
