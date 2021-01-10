@@ -335,6 +335,39 @@ class Position {
     }
 
     /**
+     * \brief Get the ID of a piece at a given position.
+     */
+    inline int get_piece(int square) const {
+      if (boards[W_PAWN] != 0) {
+        return W_PAWN;
+      } else if (boards[W_KNIGHT] != 0) {
+        return W_KNIGHT;
+      } else if (boards[W_BISHOP] != 0) {
+        return W_BISHOP;
+      } else if (boards[W_ROOK] != 0) {
+        return W_ROOK;
+      } else if (boards[W_QUEEN] != 0) {
+        return W_QUEEN;
+      } else if (boards[W_KING] != 0) {
+        return W_KING;
+      } else if (boards[B_PAWN] != 0) {
+        return B_PAWN;
+      } else if (boards[B_KNIGHT] != 0) {
+        return B_KNIGHT;
+      } else if (boards[B_BISHOP] != 0) {
+        return B_BISHOP;
+      } else if (boards[B_ROOK] != 0) {
+        return B_ROOK;
+      } else if (boards[B_QUEEN] != 0) {
+        return B_QUEEN;
+      } else if (boards[B_KING] != 0) {
+        return B_KING;
+      } else {
+        return -1;
+      }
+    }
+
+    /**
      * \brief Generate a FEN string for this board.
      */
     std::string fen_board() const;
