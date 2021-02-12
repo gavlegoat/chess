@@ -353,6 +353,83 @@ void GameState::undo_move() {
   history.pop_back();
 }
 
+Move GameState::convert_move(const std::string& str) const {
+  std::string from = str.substr(0, 2);
+  std::string to = str.substr(2, 2);
+  int start = algebraic_to_int(from);
+  int end = algebraic_to_int(to);
+  int piece = node.position.get_piece(start);
+  uint16_t flags = Move::QUIET;
+
+  if (piece == -1) {
+    throw std::runtime_error("Illegal move in convert_move");
+  }
+
+  if (node.position.get_piece(end) != -1) {
+    flags = Move::CAPTURE;
+  }
+
+  if (piece == Position::W_PAWN || piece == Position::B_PAWN) {
+    int srank = start / 8;
+    int erank = end / 8;
+    if (std::abs(srank - erank) > 1) {
+      flags = Move::PAWN_DOUBLE;
+    }
+    if (erank == 0 || erank == 7) {
+      if (node.position.get_piece(end) != -1) {
+        switch (str[4]) {
+          case 'q':
+            flags = Move::PROMOTE_QUEEN_CAPTURE;
+            break;
+          case 'r':
+            flags = Move::PROMOTE_ROOK_CAPTURE;
+            break;
+          case 'b':
+            flags = Move::PROMOTE_BISHOP_CAPTURE;
+            break;
+          case 'n':
+            flags = Move::PROMOTE_KNIGHT_CAPTURE;
+            break;
+          default:
+            throw std::runtime_error("Unrecognized promotion in convert_move");
+        }
+      } else {
+        switch (str[4]) {
+          case 'q':
+            flags = Move::PROMOTE_QUEEN;
+            break;
+          case 'r':
+            flags = Move::PROMOTE_ROOK;
+            break;
+          case 'b':
+            flags = Move::PROMOTE_BISHOP;
+            break;
+          case 'n':
+            flags = Move::PROMOTE_KNIGHT;
+            break;
+          default:
+            throw std::runtime_error("Unrecognized promotion in convert_move");
+        }
+      }
+    }
+    if (node.en_passant_square == end) {
+      // A pawn moving to the en passant square is always en passant
+      flags = Move::CAPTURE_EP;
+    }
+  }
+
+  if ((start == 4 && end == 6 && piece == Position::W_KING) ||
+      (start == 60 && end == 62 && piece == Position::B_KING)) {
+    flags = Move::KING_CASTLE;
+  }
+  if ((start == 4 && end == 2 && piece == Position::W_KING) ||
+      (start == 60 && end == 58 && piece == Position::B_KING)) {
+    flags = Move::QUEEN_CASTLE;
+  }
+
+  return Move(start, end, piece, flags);
+}
+
 // Convert a GameState to a FEN string
 std::string GameState::fen_string() const {
   std::string ret = node.position.fen_board();

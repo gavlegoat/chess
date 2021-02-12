@@ -15,3 +15,5 @@ file(GLOB TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp)
 add_executable(test_exe ${TEST_SOURCES} ${CHESS_SOURCES})
 target_include_directories(test_exe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(test_exe PRIVATE Catch)
+
+add_executable(engine src/main.cpp ${CHESS_SOURCES})

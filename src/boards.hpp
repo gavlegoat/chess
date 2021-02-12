@@ -533,6 +533,11 @@ class GameState {
     void undo_move();
 
     /**
+     * \brief Convert a move in long algebraic notation to the internal format.
+     */
+    Move convert_move(const std::string& str) const;
+
+    /**
      * \brief Generate a FEN string for this game state.
      */
     std::string fen_string() const;
