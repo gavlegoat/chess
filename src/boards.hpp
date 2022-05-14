@@ -5,6 +5,8 @@
 #include <iostream>
 #include <deque>
 
+#include "utils.hpp"
+
 // There are 12 bitboards for the indivitual pieces plus 2 representing all of
 // the pieces for each side and 1 representing all of the pieces for both
 // sides.
@@ -46,6 +48,11 @@ class Move {
     static const uint16_t PROMOTE_BISHOP_CAPTURE = 13;
     static const uint16_t PROMOTE_ROOK_CAPTURE = 14;
     static const uint16_t PROMOTE_QUEEN_CAPTURE = 15;
+
+    /**
+     * \brief Create a null move.
+     */
+    Move();
 
     /**
      * \brief Create a new move.
@@ -176,6 +183,30 @@ class Move {
     friend bool operator==(const Move& l, const Move& r) {
       return l.flags == r.flags && l.piece_moved == r.piece_moved &&
         l.from_sq == r.from_sq && l.to_sq == r.to_sq;
+    }
+
+    friend bool operator!=(const Move& l, const Move& r) {
+      return !(l == r);
+    }
+
+    /**
+     * \brief Print a move to an output stream.
+     *
+     * The output format is the one used by UCI, <from_sq><to_sq> with
+     * a possible appended character for promotion.
+     */
+    friend std::ostream& operator<<(std::ostream& out, const Move& m) {
+      out << int_to_algebraic(m.from_sq) << int_to_algebraic(m.to_sq);
+      if (m.promote_rook()) {
+        out << "r";
+      } else if (m.promote_bishop()) {
+        out << "b";
+      } else if (m.promote_knight()) {
+        out << "n";
+      } else if (m.promote_queen()) {
+        out << "q";
+      }
+      return out;
     }
 };
 
@@ -338,29 +369,30 @@ class Position {
      * \brief Get the ID of a piece at a given position.
      */
     inline int get_piece(int square) const {
-      if (boards[W_PAWN] != 0) {
+      uint64_t mask = 1ull << square;
+      if ((boards[W_PAWN] & mask) != 0) {
         return W_PAWN;
-      } else if (boards[W_KNIGHT] != 0) {
+      } else if ((boards[W_KNIGHT] & mask) != 0) {
         return W_KNIGHT;
-      } else if (boards[W_BISHOP] != 0) {
+      } else if ((boards[W_BISHOP] & mask) != 0) {
         return W_BISHOP;
-      } else if (boards[W_ROOK] != 0) {
+      } else if ((boards[W_ROOK] & mask) != 0) {
         return W_ROOK;
-      } else if (boards[W_QUEEN] != 0) {
+      } else if ((boards[W_QUEEN] & mask) != 0) {
         return W_QUEEN;
-      } else if (boards[W_KING] != 0) {
+      } else if ((boards[W_KING] & mask) != 0) {
         return W_KING;
-      } else if (boards[B_PAWN] != 0) {
+      } else if ((boards[B_PAWN] & mask) != 0) {
         return B_PAWN;
-      } else if (boards[B_KNIGHT] != 0) {
+      } else if ((boards[B_KNIGHT] & mask) != 0) {
         return B_KNIGHT;
-      } else if (boards[B_BISHOP] != 0) {
+      } else if ((boards[B_BISHOP] & mask) != 0) {
         return B_BISHOP;
-      } else if (boards[B_ROOK] != 0) {
+      } else if ((boards[B_ROOK] & mask) != 0) {
         return B_ROOK;
-      } else if (boards[B_QUEEN] != 0) {
+      } else if ((boards[B_QUEEN] & mask) != 0) {
         return B_QUEEN;
-      } else if (boards[B_KING] != 0) {
+      } else if ((boards[B_KING] & mask) != 0) {
         return B_KING;
       } else {
         return -1;
@@ -396,7 +428,7 @@ class Node {
     bool w_castle_q;      /**< White can castle queenside. */
     bool b_castle_k;      /**< Black can castle kingside. */
     bool b_castle_q;      /**< Black can castle queenside. */
-    uint64_t en_passant_square;   /**< The square where en passant can occur. */
+    int en_passant_square;   /**< The square where en passant can occur. */
     bool en_passant_possible;     /**< True if an en passant move is legal. */
     int half_moves_since_reset;   /**< Number of moves since pawn move or capture. */
     int moves;    /**< Current move number (1 in the initial position). */
@@ -421,7 +453,7 @@ class Node {
      * \param ms The current move number.
      */
     Node(Position pos, bool wtm, bool wck, bool wcq, bool bck, bool bcq,
-        uint64_t eps, bool epp, int msr, int ms);
+        int eps, bool epp, int msr, int ms);
 };
 
 /**
@@ -517,15 +549,6 @@ class GameState {
      * \brief Make a move.
      */
     void make_move(const Move& m);
-
-    /**
-     * \brief Make a null move.
-     *
-     * This changes who's turn it is to move without actually changing the
-     * position. This is useful for a variety of internal implementations as
-     * well as sometimes speeding up alpha-beta search.
-     */
-    void flip_move();
 
     /**
      * \brief Undo the last move.

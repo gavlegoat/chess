@@ -19,6 +19,14 @@ SCENARIO("evaluation is correct on some known positions") {
         CHECK(std::abs(b.evaluate_position(gs)) <= 0.001);
       }
     }
+
+    WHEN("we look at the position after e4-e5") {
+      GameState gs("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 1");
+      THEN("the basic evaluation is zero") {
+        BasicEvaluator b;
+        CHECK(std::abs(b.evaluate_position(gs)) <= 0.001);
+      }
+    }
   }
 
   GIVEN("some test positions") {

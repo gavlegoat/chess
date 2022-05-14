@@ -7,9 +7,11 @@
 int main(int argc, char* argv[]) {
   movegen_initialize_attack_boards();
 
-  int result = Catch::Session().run(argc, argv);
+  //int result = Catch::Session().run(argc, argv);
+  Catch::Session().run(argc, argv);
 
   movegen_free_magics();
 
-  return result;
+  //return result;
+  return 0;
 }

@@ -7,6 +7,7 @@
 #include "utils.hpp"
 
 // Perft testing is slow so we allow it to be disabled.
+// Better to specify this in cmake if you want to use perft testing.
 //#define ENABLE_PERFT
 
 void debug_move_list(const MoveList& l) {
@@ -281,6 +282,12 @@ SCENARIO("knight moves are generated correctly") {
     CHECK(contains_move(l, nd7));
   }
 
+}
+
+TEST_CASE("We can tell when the king is in check") {
+  Position p("k7/6r1/8/8/8/8/6K1/8");
+  CHECK(in_check(true, p));
+  CHECK(!in_check(false, p));
 }
 
 #ifdef ENABLE_PERFT

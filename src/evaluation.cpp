@@ -22,9 +22,9 @@ double BasicEvaluator::evaluate_position(GameState& gs) {
 
   // Mobility
   int to_move_mobility = generate_moves(gs).size();
-  gs.flip_move();
+  gs.make_move(Move());
   int other_mobility = generate_moves(gs).size();
-  gs.flip_move();
+  gs.undo_move();
   int white_mobility = gs.whites_move() ? to_move_mobility : other_mobility;
   int black_mobility = gs.whites_move() ? other_mobility : to_move_mobility;
   double mobility_score = 0.1 * (white_mobility - black_mobility);

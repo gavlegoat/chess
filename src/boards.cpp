@@ -77,6 +77,10 @@ Position::Position(std::string fen) {
 }
 
 void Position::make_move(const Move& m) {
+  if (m.piece() == -1) {
+    // This is a null move, the position doesn't change
+    return;
+  }
   int from_square = m.from_square();
   int to_square = m.to_square();
   int piece = m.piece();
@@ -220,7 +224,7 @@ Node::Node():
   en_passant_possible{false}, half_moves_since_reset{0}, moves{1} {}
 
 Node::Node(Position pos, bool wtm, bool wck, bool wcq, bool bck, bool bcq,
-    uint64_t eps, bool epp, int msr, int ms):
+    int eps, bool epp, int msr, int ms):
   position{pos}, white_to_move{wtm}, w_castle_k{wck}, w_castle_q{wcq},
   b_castle_k{bck}, b_castle_q{bcq}, en_passant_square{eps},
   en_passant_possible{epp}, half_moves_since_reset{msr}, moves{ms} {}
@@ -333,10 +337,6 @@ void GameState::make_move(const Move& m) {
     repeats[node.position]++;
   }
   // It's now the next player's turn
-  node.white_to_move = !node.white_to_move;
-}
-
-void GameState::flip_move() {
   node.white_to_move = !node.white_to_move;
 }
 
@@ -471,6 +471,8 @@ std::ostream& operator<<(std::ostream& os, const GameState& gs) {
   os << gs.fen_string();
   return os;
 }
+
+Move::Move(): from_sq{0}, to_sq{0}, piece_moved{-1}, flags{0} {}
 
 Move::Move(int from, int to, int p, uint16_t fl) :
   from_sq(from), to_sq(to), piece_moved(p), flags(fl) {}
