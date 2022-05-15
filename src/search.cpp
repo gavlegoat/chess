@@ -6,6 +6,9 @@
 
 /**
  * \brief Get the point value of a piece
+ *
+ * We also return a value for kings because this is used for move ordering
+ * by examining the difference between the captured and capturing piece.
  */
 int piece_score(int piece) {
   switch (piece) {
@@ -23,8 +26,11 @@ int piece_score(int piece) {
     case Position::W_QUEEN:
     case Position::B_QUEEN:
       return 9;
+    case Position::W_KING:
+    case Position::B_KING:
+      return 100;
     default:
-      throw std::runtime_error("Illegal capture");
+      throw std::runtime_error("Illegal capture: " + std::to_string(piece));
   }
 }
 
@@ -73,10 +79,20 @@ class MoveOrdering {
       // difference between the value of the capturing piece and the value of
       // the captured piece.
       if (l.capture()) {
-        int lscore = piece_score(gs.pos().get_piece(l.to_square())) -
-            piece_score(l.piece());
-        int rscore = piece_score(gs.pos().get_piece(r.to_square())) -
-            piece_score(r.piece());
+        int lscore = 0;
+        if (l.capture_ep()) {
+          lscore = 1;
+        } else {
+          lscore = piece_score(gs.pos().get_piece(l.to_square())) -
+              piece_score(l.piece());
+        }
+        int rscore = 0;
+        if (r.capture_ep()) {
+          rscore = 1;
+        } else {
+          rscore = piece_score(gs.pos().get_piece(r.to_square())) -
+              piece_score(r.piece());
+        }
         return lscore < rscore;
       }
       // If neither move is a capture, we use any arbitrary ordering.
@@ -219,6 +235,9 @@ std::pair<double, Move> BasicAlphaBetaSearcher::search(GameState& gs,
   Move outer_best_move;
   // Outer loop for iterative deepening
   for (unsigned depth = 0; depth < max_depth; depth++) {
+    if (stop_signal) {
+      break;
+    }
     double best_score = -std::numeric_limits<double>::max();
     Move best_move = Move(0, 0, 0, 0);
     MoveList best_pv;
@@ -235,6 +254,9 @@ std::pair<double, Move> BasicAlphaBetaSearcher::search(GameState& gs,
     std::priority_queue<Move, std::vector<Move>, MoveOrdering>
       queue(ml.begin(), ml.end(), mo);
     while (!queue.empty()) {
+      if (stop_signal) {
+        break;
+      }
       Move m = queue.top();
       queue.pop();
       gs.make_move(m);
@@ -250,14 +272,14 @@ std::pair<double, Move> BasicAlphaBetaSearcher::search(GameState& gs,
         best_pv = res.pv;
         best_pv.push_front(m);
       }
-      if (score > outer_best_score) {
+      if (best_score > outer_best_score) {
         outer_best_score = best_score;
         outer_best_move = best_move;
         this->principle_variation = best_pv;
         info.pv_lock.lock();
         info.pv = best_pv;
         info.pv_lock.unlock();
-        info.score = best_score;
+        info.score = gs.whites_move() ? best_score : -best_score;
       }
     }
     if (!stop_signal) {
@@ -268,7 +290,7 @@ std::pair<double, Move> BasicAlphaBetaSearcher::search(GameState& gs,
       info.pv = best_pv;
       info.pv_lock.unlock();
       info.depth = depth + 1;
-      info.score = outer_best_score;
+      info.score = gs.whites_move() ? outer_best_score : -outer_best_score;
     }
   }
   if (!gs.whites_move()) {
