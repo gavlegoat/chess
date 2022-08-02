@@ -7,7 +7,7 @@
 #include "utils.hpp"
 
 // Perft testing is slow so we allow it to be disabled.
-#define ENABLE_PERFT
+#define ENABLE_PERFT 0
 
 void debug_move_list(const MoveList& l) {
   for (const Move& m : l) {
@@ -283,7 +283,7 @@ SCENARIO("knight moves are generated correctly") {
 
 }
 
-#ifdef ENABLE_PERFT
+#if ENABLE_PERFT
 SCENARIO("perft testing gives correct results") {
 
   GIVEN("the starting position") {
