@@ -13,6 +13,8 @@
  */
 class Evaluator {
   public:
+    virtual ~Evaluator() {}
+
     /**
      * \brief Initialize any internal state needed by this evaluator.
      */

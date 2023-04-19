@@ -45,18 +45,6 @@ Magic rook_magics[64];
 /// A set of magic bitboards describing bishop moves form each square.
 Magic bishop_magics[64];
 
-// Determine whetehr a pawn can capture from one square to another.
-bool pawn_can_capture(bool white_to_move, int from, int to) {
-  int frank = from / 8;
-  int ffile = from % 8;
-  int trank = to / 8;
-  int tfile = to % 8;
-  return ( white_to_move && trank == frank + 1 &&
-            (ffile == tfile + 1 || ffile == tfile - 1)) ||
-         (!white_to_move && trank == frank - 1 &&
-            (ffile == tfile + 1 || ffile == tfile - 1));
-}
-
 // Get a board representing all of the pieces which can move to the given
 // target. Note that this move only considers moves which end with a piece
 // on the target square. In particular, if there is a pawn on the target
@@ -146,21 +134,6 @@ inline int lsb(uint64_t x) {
   return std::log2(x);
 }
 #endif
-
-// Append all of the moves for some piece type which can end on the given
-// square.
-void append_moves_to(uint64_t from_squares, int to_square,
-    int piece, bool capture, MoveList& l) {
-  while (from_squares != 0) {
-    int fsq = lsb(from_squares);
-    from_squares &= from_squares - 1;
-    if (capture) {
-      l.push_back(Move(fsq, to_square, piece, Move::CAPTURE));
-    } else {
-      l.push_back(Move(fsq, to_square, piece, Move::QUIET));
-    }
-  }
-}
 
 // Append all of the moves for a given piece type starting from some square.
 void append_moves_from(int from_square, uint64_t to_squares,
@@ -593,7 +566,7 @@ Magic generate_magic(int square, int shift, bool is_rook) {
   std::vector<uint64_t> occupancies = generate_possible_occupancies(square,
       occupancy, 0, 0);
   std::vector<uint64_t> attacks;
-  for (int i = 0; i < occupancies.size(); i++) {
+  for (unsigned i = 0; i < occupancies.size(); i++) {
     attacks.push_back(generate_attack(square, occupancies[i], is_rook));
   }
 
@@ -616,9 +589,9 @@ Magic generate_magic(int square, int shift, bool is_rook) {
 
     bool collision = false;
     // For each possible occupancy
-    for (int i = 0; i < occupancies.size(); i++) {
+    for (unsigned i = 0; i < occupancies.size(); i++) {
       // Calculate an offset into a small number of bits
-      int offset = (occupancies[i] * m) >> (64 - shift);
+      unsigned offset = (occupancies[i] * m) >> (64 - shift);
       if (table[offset] == ~0ull || table[offset] == attacks[i]) {
         // If the offset hasn't been filled already, fill it
         table[offset] = attacks[i];
